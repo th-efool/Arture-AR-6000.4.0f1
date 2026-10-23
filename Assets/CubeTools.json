@@ -3,7 +3,7 @@
     {
       "type": "function",
       "name": "Cube_StartSpin",
-      "description": "Start spinning the cube",
+      "description": "Start spinning the cube continuously",
       "parameters": {
         "type": "object",
         "properties": {}
@@ -36,7 +36,7 @@
     {
       "type": "function",
       "name": "Cube_RandomColor",
-      "description": "Change the color of the cube to a random color",
+      "description": "Change the color of the cube to a random bright color",
       "parameters": {
         "type": "object",
         "properties": {}
@@ -45,13 +45,13 @@
     {
       "type": "function",
       "name": "Cube_DecreaseOpacity",
-      "description": "Decrease the opacity of the cube (make it more transparent / see-through)",
+      "description": "Decrease the opacity of the cube (make it more transparent / see-through / ghostly)",
       "parameters": {
         "type": "object",
         "properties": {
           "amount": {
             "type": "number",
-            "description": "Optional amount to decrease opacity by (0.0 to 1.0, default is 0.25)"
+            "description": "Optional amount to decrease opacity by (0.0 to 1.0, default 0.25)"
           }
         }
       }
@@ -65,7 +65,7 @@
         "properties": {
           "amount": {
             "type": "number",
-            "description": "Optional amount to increase opacity by (0.0 to 1.0, default is 0.25)"
+            "description": "Optional amount to increase opacity by (0.0 to 1.0, default 0.25)"
           }
         }
       }
@@ -79,10 +79,90 @@
         "properties": {
           "opacity": {
             "type": "number",
-            "description": "Target opacity from 0.0 (transparent) to 1.0 (fully opaque), or percentage 0 to 100"
+            "description": "Target opacity from 0.0 (transparent) to 1.0 (fully opaque)"
           }
         },
         "required": ["opacity"]
+      }
+    },
+    {
+      "type": "function",
+      "name": "Cube_SetScale",
+      "description": "Change the size of the cube (make it bigger, huge, giant, smaller, tiny, normal)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "multiplier": {
+            "type": "number",
+            "description": "Size scale multiplier relative to original (e.g. 0.5 for small, 2.0 for big/huge, 1.0 for normal size)"
+          }
+        },
+        "required": ["multiplier"]
+      }
+    },
+    {
+      "type": "function",
+      "name": "Cube_Jump",
+      "description": "Make the cube jump or bounce up into the air and land smoothly back down",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "height": {
+            "type": "number",
+            "description": "Optional jump height in meters (default is 1.2 meters)"
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "Cube_Float",
+      "description": "Make the cube levitate, hover, or float gently up and down in mid-air",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "enable": {
+            "type": "boolean",
+            "description": "True to start floating/levitating, false to stop"
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "Cube_Pulse",
+      "description": "Make the cube beat, pulse, or breathe like a heartbeat",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "enable": {
+            "type": "boolean",
+            "description": "True to start pulsing, false to stop pulsing"
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "Cube_Rainbow",
+      "description": "Make the cube cycle smoothly through all rainbow colors continuously (disco / party / rainbow mode)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "enable": {
+            "type": "boolean",
+            "description": "True to start rainbow cycle, false to stop"
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "Cube_Reset",
+      "description": "Reset the cube back to its original state (stop all animations, reset position, scale, color, and opacity)",
+      "parameters": {
+        "type": "object",
+        "properties": {}
       }
     }
   ]
