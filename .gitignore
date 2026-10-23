@@ -109,3 +109,5 @@ InitTestScene*.unity*
 # Local tool caches and generated artifacts
 graphify-out/
 
+Assets/Resources/OpenAIConfig.asset
+Assets/Resources/OpenAIConfig.asset
