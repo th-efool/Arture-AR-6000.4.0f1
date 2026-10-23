@@ -6333,6 +6333,10 @@ PrefabInstance:
       propertyPath: config
       value: 
       objectReference: {fileID: 11400000, guid: 60840d095e62bb34182c87858f2a3c64, type: 2}
+    - target: {fileID: 402747159836216905, guid: 606625c8142b144769a5318edc6efd89, type: 3}
+      propertyPath: imageDetail
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 7637585925344815295, guid: 606625c8142b144769a5318edc6efd89, type: 3}
       propertyPath: m_Name
       value: RealtimeConversationManager
