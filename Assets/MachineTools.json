@@ -1,0 +1,34 @@
+{
+  "tools": [
+    {
+      "type": "function",
+      "name": "Machine_GetComponents",
+      "description": "Read this machine's component names, descriptions, and whether each component has an assigned GameObject. Call before answering machine component questions. Use the returned names exactly.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
+      "name": "Machine_ShowAnswer",
+      "description": "Highlight one machine component and display an answer above it. Call for every component question, including follow-up questions. The previous highlight and label are replaced. Use an exact component name returned by Machine_GetComponents.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "type": "string",
+            "description": "Exact component identifier, for example PumpCasing or ElectricMotor."
+          },
+          "answer": {
+            "type": "string",
+            "description": "A short plain-text answer to the user's current question, grounded in the component description."
+          }
+        },
+        "required": ["component", "answer"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

@@ -31,6 +31,7 @@ public class WorldSpaceUI : MonoBehaviour
     {
         if (prefab == null)
         {
+
             Debug.LogError("WorldSpaceUI: Prefab is not assigned.");
             return null;
         }
