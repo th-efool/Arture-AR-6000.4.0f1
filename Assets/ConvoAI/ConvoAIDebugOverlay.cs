@@ -247,17 +247,6 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         if (_manager == null || _micStreamer == null)
             BindSceneComponents();
 
-        // If Push-To-Talk button is held and user releases touch/mouse anywhere on screen, commit the speech
-        var starter = ConvoAIMicPermissionStarter.Instance;
-        if (starter != null && starter.PushToTalkMode && starter.IsHoldingTalk)
-        {
-            bool anyPressed = Input.GetMouseButton(0) || Input.touchCount > 0;
-            if (!anyPressed)
-            {
-                starter.EndPushToTalk();
-            }
-        }
-
         lock (LogLock)
         {
             while (PendingLogs.Count > 0)
@@ -391,7 +380,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
                 starter.ToggleTranscribeModel();
             }
 
-            string modeLabel = isPtt ? "Mode: Push-To-Talk" : "Mode: Auto-VAD (EN)";
+            string modeLabel = isPtt ? "Mode: Tap-To-Speak" : "Mode: Auto-VAD (EN)";
             if (GUILayout.Button(modeLabel, _buttonStyle, GUILayout.Width(135f * scale), GUILayout.Height(28f * scale)))
             {
                 starter.SetPushToTalkMode(!isPtt);
@@ -408,27 +397,29 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         }
         GUILayout.EndHorizontal();
 
-        // Push-to-Talk Hold Button when PTT mode is enabled
-        if (starter != null && isPtt)
+        // Tap-to-Speak Button: Supports both single Tap-to-Toggle AND Press-and-Hold!
+        if (starter != null)
         {
-            GUILayout.Space(4f);
-            Rect pttRect = GUILayoutUtility.GetRect(width - 24f, 42f * scale);
-            bool holding = starter.IsHoldingTalk;
-            string btnText = holding ? "LISTENING... (Release to Send to AI)" : "HOLD TO TALK (English)";
-            GUI.Box(pttRect, btnText, holding ? _pttActiveStyle : _buttonStyle);
+            GUILayout.Space(3f);
+            bool isListening = starter.IsListening;
+            string btnText;
+            if (isListening)
+            {
+                btnText = $"⏹️ LISTENING ({starter.CurrentSpeechDuration:F1}s) - TAP TO STOP & SEND";
+            }
+            else
+            {
+                btnText = isPtt
+                    ? "🎤 TAP TO SPEAK"
+                    : "🎤 TAP TO SPEAK (or speak hands-free)";
+            }
 
-            Event e = Event.current;
-            if (e.type == EventType.MouseDown && pttRect.Contains(e.mousePosition))
+            GUIStyle activeBtnStyle = isListening ? _pttActiveStyle : _buttonStyle;
+            if (GUILayout.Button(btnText, activeBtnStyle, GUILayout.Width(width - 24f), GUILayout.Height(36f * scale)))
             {
-                starter.BeginPushToTalk();
-                e.Use();
+                starter.ToggleTapToSpeak();
             }
-            else if (e.type == EventType.MouseUp && holding)
-            {
-                starter.EndPushToTalk();
-                e.Use();
-            }
-            GUILayout.Space(4f);
+            GUILayout.Space(3f);
         }
 
         // Live stage status summary
@@ -436,12 +427,17 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         string wsStatus = GetWebSocketStatusText();
         string micStatus = GetMicrophoneStatusText();
         string toolCount = GetToolCountText();
-        bool userActive = _userSpeaking || (starter != null && starter.IsHoldingTalk);
+        bool userActive = _userSpeaking || (starter != null && starter.IsListening);
+        string userSpeakingLabel = userActive
+            ? (starter != null && starter.IsListening
+                ? $"<color=#66BB6A>LISTENING ({starter.CurrentSpeechDuration:F1}s)</color>"
+                : "<color=#66BB6A>SPEAKING</color>")
+            : "Idle";
 
         GUILayout.Label(
             $"<b>1. Mic Perm:</b> {permStatus}   |   <b>2. 24kHz Mic:</b> {micStatus}\n" +
             $"<b>3. WebSocket:</b> {wsStatus}   |   <b>4. Tools:</b> {toolCount}\n" +
-            $"<b>5. Voice State:</b> User={( userActive ? "<color=#66BB6A>SPEAKING</color>" : "Idle" )} | Agent={( _agentSpeaking ? "<color=#FFA726>SPEAKING</color>" : "Idle" )}",
+            $"<b>5. Voice State:</b> User={userSpeakingLabel} | Agent={( _agentSpeaking ? "<color=#FFA726>SPEAKING</color>" : "Idle" )}",
             _statusStyle);
 
         if (!string.IsNullOrEmpty(_lastUserTranscript))
@@ -514,8 +510,8 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         if (starter != null && starter.IsCapturing24k)
         {
             bool recent = (Time.unscaledTime - starter.LastChunkSentTime) < 1.0f;
-            if (starter.PushToTalkMode && !starter.IsHoldingTalk)
-                return $"<color=#FFD54F>PTT Ready ({starter.SentChunksCount} pkts)</color>";
+            if (starter.PushToTalkMode && !starter.IsListening)
+                return $"<color=#FFD54F>Tap-To-Speak Ready ({starter.SentChunksCount} pkts)</color>";
 
             return recent
                 ? $"<color=#66BB6A>Streaming 24kHz ({starter.SentChunksCount} pkts)</color>"

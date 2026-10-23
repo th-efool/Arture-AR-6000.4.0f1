@@ -2,6 +2,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text;
+using System.Threading;
 using NativeWebSocket;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -14,10 +16,11 @@ using UnityEngine.Android;
 /// <summary>
 /// Ensures Android runtime microphone permissions (RECORD_AUDIO) are granted,
 /// upgrades the Realtime API session to use:
-/// - 24 kHz mono PCM16 input audio (fixing the 16kHz -> 24kHz 1.5x pitch/speed distortion in MicrophoneStreamer),
-/// - English-locked gpt-transcribe / gpt-live-transcribe with near_field noise reduction and tuned VAD threshold (0.65),
+/// - 24 kHz mono PCM16 input audio (fixing the 16kHz -> 24kHz 1.5x pitch/speed distortion in MicrophoneStreamer)
+///   with a full drain loop and non-blocking async WebSocket sends so zero audio backlog can ever build up,
+/// - English-locked gpt-live-transcribe / gpt-transcribe with near_field noise reduction and responsive VAD,
 /// - Automatic mic gating while the AI is speaking to prevent speaker feedback loops,
-/// - Optional Push-to-Talk mode via the on-screen UI.
+/// - Reliable Tap-to-Speak / Push-to-Talk mode with micro-tap guard and synchronized WebSocket delivery.
 /// </summary>
 [DefaultExecutionOrder(-100)]
 public class ConvoAIMicPermissionStarter : MonoBehaviour
@@ -25,9 +28,10 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
     public static ConvoAIMicPermissionStarter Instance { get; private set; }
 
     private const int OpenAISampleRate = 24_000;
-    private const int ChunkSamples24k = 1_536; // 64 ms at 24 kHz
+    private const int ChunkSamples24k = 2_400; // 100 ms at 24 kHz (10 packets/sec instead of 16)
 
-    private string _transcribeModel = "gpt-transcribe";
+    // Default to gpt-live-transcribe for instant low-latency continuous live transcription
+    private string _transcribeModel = "gpt-live-transcribe";
     public string TranscribeModel => _transcribeModel;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -50,9 +54,12 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
     private FieldInfo _wsField;
     private FieldInfo _sessionReadyField;
+    private FieldInfo _responseActiveField;
+    private FieldInfo _responseCreateSentField;
     private FieldInfo _modelField;
     private FieldInfo _systemPromptField;
     private MethodInfo _resolveVoiceMethod;
+    private FieldInfo _sendTextQueueField;
 
     private string _micDevice;
     private AudioClip _micClip24k;
@@ -62,12 +69,17 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
     private bool _agentSpeaking;
     private float _agentFinishedSpeakingTime = -999f;
+    private float _responseActiveSince = -999f;
     private bool _customSessionConfigured;
     private bool _pushToTalkMode;
     private bool _isHoldingTalk;
+    private float _speechStartTime = -999f;
+    private int _speechSamplesRecorded;
 
     public bool PushToTalkMode => _pushToTalkMode;
     public bool IsHoldingTalk => _isHoldingTalk;
+    public bool IsListening => _isHoldingTalk;
+    public float CurrentSpeechDuration => (_isHoldingTalk && _speechStartTime > 0f) ? (Time.unscaledTime - _speechStartTime) : 0f;
     public bool IsCapturing24k => _micClip24k != null && !string.IsNullOrEmpty(_micDevice) && Microphone.IsRecording(_micDevice);
     public int SentChunksCount { get; private set; }
     public float LastChunkSentTime { get; private set; } = -999f;
@@ -97,9 +109,12 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
         _wsField = typeof(RealtimeConversationManager).GetField("_ws", BindingFlags.Instance | BindingFlags.NonPublic);
         _sessionReadyField = typeof(RealtimeConversationManager).GetField("_sessionReady", BindingFlags.Instance | BindingFlags.NonPublic);
+        _responseActiveField = typeof(RealtimeConversationManager).GetField("_responseActive", BindingFlags.Instance | BindingFlags.NonPublic);
+        _responseCreateSentField = typeof(RealtimeConversationManager).GetField("_responseCreateSent", BindingFlags.Instance | BindingFlags.NonPublic);
         _modelField = typeof(RealtimeConversationManager).GetField("model", BindingFlags.Instance | BindingFlags.NonPublic);
         _systemPromptField = typeof(RealtimeConversationManager).GetField("systemPrompt", BindingFlags.Instance | BindingFlags.NonPublic);
         _resolveVoiceMethod = typeof(RealtimeConversationManager).GetMethod("ResolveVoiceString", BindingFlags.Instance | BindingFlags.NonPublic);
+        _sendTextQueueField = typeof(WebSocket).GetField("sendTextQueue", BindingFlags.Instance | BindingFlags.NonPublic);
 
         // Disable the package's 16kHz MicrophoneStreamer component so it does not send
         // 1.5x sped-up / pitch-shifted 16kHz audio to OpenAI's 24kHz Realtime API endpoint.
@@ -134,9 +149,17 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
                 _agentFinishedSpeakingTime = Time.unscaledTime;
         });
 
+        _conversationManager.onUserSpeaking.AddListener(speaking =>
+        {
+            if (speaking)
+            {
+                // Ensure stuck _responseActive flags never block a new user turn
+                _responseActiveField?.SetValue(_conversationManager, false);
+                _responseCreateSentField?.SetValue(_conversationManager, false);
+            }
+        });
+
 #if UNITY_ANDROID && !UNITY_EDITOR
-        // Wait briefly for ARCore's initial CAMERA permission dialog to finish so Android
-        // does not ignore our RECORD_AUDIO permission request while another dialog is open.
         float cameraWaitElapsed = 0f;
         while (!Permission.HasUserAuthorizedPermission(Permission.Camera) && cameraWaitElapsed < 15f)
         {
@@ -144,7 +167,6 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             yield return null;
         }
 
-        // Wait one extra frame after returning from the camera dialog
         yield return null;
 
         if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
@@ -178,7 +200,6 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         }
 #endif
 
-        // Start the Realtime Conversation Agent if it hasn't connected yet.
         bool alreadyStarted = _wsField != null && _wsField.GetValue(_conversationManager) != null;
         if (!alreadyStarted)
         {
@@ -200,12 +221,34 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             return;
         }
 
-        // As soon as the package's HandleSessionCreated() runs, intercept and replace
-        // its 16kHz mic capture with clean 24kHz capture + English noise-reduced session settings.
+        // Watchdog for stuck _responseActive state (if a response hangs for > 8s without speaking, unlock it)
+        bool respActive = _responseActiveField != null && (bool)_responseActiveField.GetValue(_conversationManager);
+        if (respActive)
+        {
+            if (_responseActiveSince < 0f)
+                _responseActiveSince = Time.unscaledTime;
+            else if (!_agentSpeaking && (Time.unscaledTime - _responseActiveSince) > 8f)
+            {
+                _responseActiveField.SetValue(_conversationManager, false);
+                _responseCreateSentField?.SetValue(_conversationManager, false);
+                _responseActiveSince = -999f;
+            }
+        }
+        else
+        {
+            _responseActiveSince = -999f;
+        }
+
         if (!_customSessionConfigured)
         {
             _customSessionConfigured = true;
             UpgradeSessionAndStart24kMic();
+        }
+
+        // Safety timeout: if Tap-to-Speak was left recording for > 35s, automatically finish and commit
+        if (_isHoldingTalk && CurrentSpeechDuration > 35f)
+        {
+            EndTapToSpeak();
         }
 
         Stream24kMicrophoneChunks();
@@ -213,7 +256,6 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
     private void UpgradeSessionAndStart24kMic()
     {
-        // Stop the package's 16kHz MicrophoneStreamer that HandleSessionCreated() just started
         if (_micStreamer != null)
         {
             _micStreamer.StopStreaming();
@@ -227,12 +269,14 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         }
 
         _micDevice = Microphone.devices[0];
-        _micClip24k = Microphone.Start(_micDevice, true, 2, OpenAISampleRate);
+        // Use a 10-second ring buffer so wrap-around edge cases never cause lag or lost speech
+        _micClip24k = Microphone.Start(_micDevice, true, 10, OpenAISampleRate);
         if (_micClip24k != null)
         {
             _micClipFreq = _micClip24k.frequency;
             _chunkSamplesIn = Mathf.RoundToInt(ChunkSamples24k * (float)_micClipFreq / OpenAISampleRate);
-            _lastSamplePos = 0;
+            _lastSamplePos = Microphone.GetPosition(_micDevice);
+            if (_lastSamplePos < 0) _lastSamplePos = 0;
             Debug.Log($"[ConvoAI] Started 24kHz Mic Stream: device='{_micDevice}', hardwareRate={_micClipFreq}Hz -> 24000Hz PCM16");
         }
 
@@ -246,66 +290,88 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
         _pushToTalkMode = enabled;
         _isHoldingTalk = false;
+        _speechStartTime = -999f;
+        _speechSamplesRecorded = 0;
 
         var ws = _wsField?.GetValue(_conversationManager) as WebSocket;
         if (ws != null && ws.State == WebSocketState.Open)
         {
-            var clear = new JObject { ["type"] = "input_audio_buffer.clear" };
-            _ = ws.SendText(clear.ToString(Formatting.None));
+            SendWebSocketJson("{\"type\":\"input_audio_buffer.clear\"}");
             SendEnhancedSessionUpdate();
         }
 
         Debug.Log(_pushToTalkMode
-            ? "[ConvoAI] Switched to PUSH-TO-TALK mode (Hold 'Hold to Talk' button to speak)."
-            : "[ConvoAI] Switched to AUTO-VAD mode (English-locked + Noise Reduction).");
+            ? "[ConvoAI] Switched to TAP-TO-SPEAK / PTT mode (Tap or hold button to speak)."
+            : "[ConvoAI] Switched to AUTO-VAD mode (Hands-free automatic detection).");
     }
 
     public void ToggleTranscribeModel()
     {
-        _transcribeModel = _transcribeModel == "gpt-transcribe"
-            ? "gpt-live-transcribe"
-            : "gpt-transcribe";
+        _transcribeModel = _transcribeModel == "gpt-live-transcribe"
+            ? "gpt-transcribe"
+            : "gpt-live-transcribe";
 
         SendEnhancedSessionUpdate();
         Debug.Log($"[ConvoAI] Switched transcriber model to '{_transcribeModel}' (English).");
     }
 
-    public void BeginPushToTalk()
+    public void ToggleTapToSpeak()
     {
-        if (!_pushToTalkMode)
-            return;
+        if (_isHoldingTalk)
+            EndTapToSpeak();
+        else
+            BeginTapToSpeak();
+    }
 
+    public void BeginTapToSpeak()
+    {
         _isHoldingTalk = true;
+        _speechStartTime = Time.unscaledTime;
+        _speechSamplesRecorded = 0;
+
         _conversationManager?.InterruptNow();
 
-        var ws = _wsField?.GetValue(_conversationManager) as WebSocket;
-        if (ws != null && ws.State == WebSocketState.Open)
+        if (_micClip24k != null && !string.IsNullOrEmpty(_micDevice))
         {
-            var clear = new JObject { ["type"] = "input_audio_buffer.clear" };
-            _ = ws.SendText(clear.ToString(Formatting.None));
+            // Jump read pointer to live mic head so no stale audio is sent
+            int pos = Microphone.GetPosition(_micDevice);
+            if (pos >= 0) _lastSamplePos = pos;
         }
 
-        Debug.Log("[ConvoAI] Push-to-Talk: Recording user speech...");
+        SendWebSocketJson("{\"type\":\"input_audio_buffer.clear\"}");
+        Debug.Log("[ConvoAI] Tap to Speak: LISTENING... (Speak your command)");
     }
 
-    public void EndPushToTalk()
+    public void EndTapToSpeak()
     {
-        if (!_pushToTalkMode || !_isHoldingTalk)
+        if (!_isHoldingTalk)
             return;
 
+        // Flush any remaining mic samples immediately before committing
+        Stream24kMicrophoneChunks(forceFlushRemaining: true);
         _isHoldingTalk = false;
+        float duration = _speechStartTime > 0f ? (Time.unscaledTime - _speechStartTime) : 0f;
+        _speechStartTime = -999f;
 
-        var ws = _wsField?.GetValue(_conversationManager) as WebSocket;
-        if (ws != null && ws.State == WebSocketState.Open)
+        // Guard against accidental micro-taps: OpenAI rejects commit if audio buffer < 100ms
+        // 2400 samples at 24kHz = 100ms. If under 120ms, cleanly clear the buffer without error.
+        if (_speechSamplesRecorded < 2400 || duration < 0.12f)
         {
-            var commit = new JObject { ["type"] = "input_audio_buffer.commit" };
-            _ = ws.SendText(commit.ToString(Formatting.None));
-
-            var create = new JObject { ["type"] = "response.create" };
-            _ = ws.SendText(create.ToString(Formatting.None));
-            Debug.Log("[ConvoAI] Push-to-Talk released: Committed audio & requested AI response.");
+            SendWebSocketJson("{\"type\":\"input_audio_buffer.clear\"}");
+            Debug.Log("[ConvoAI] Tap duration too short (< 120ms). Audio discarded without sending.");
+            return;
         }
+
+        _responseActiveField?.SetValue(_conversationManager, false);
+        _responseCreateSentField?.SetValue(_conversationManager, false);
+
+        SendWebSocketJson("{\"type\":\"input_audio_buffer.commit\"}");
+        SendWebSocketJson("{\"type\":\"response.create\"}");
+        Debug.Log($"[ConvoAI] Tap to speak finished ({duration:F1}s, {_speechSamplesRecorded} samples): Committed & AI response requested.");
     }
+
+    public void BeginPushToTalk() => BeginTapToSpeak();
+    public void EndPushToTalk() => EndTapToSpeak();
 
     private void SendEnhancedSessionUpdate()
     {
@@ -324,15 +390,18 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
         string voiceStr = _resolveVoiceMethod?.Invoke(_conversationManager, null) as string ?? "alloy";
 
+        // Fast, responsive turn detection: 350ms silence duration & 0.55 threshold so commands execute immediately after speaking!
+        // Note: create_response is false because RealtimeConversationManager.HandleSpeechStopped sends response.create itself.
         JToken turnDetectionToken = _pushToTalkMode
             ? JValue.CreateNull()
             : new JObject
             {
                 ["type"] = "server_vad",
-                ["threshold"] = 0.65,
-                ["prefix_padding_ms"] = 300,
-                ["silence_duration_ms"] = 600,
-                ["create_response"] = false
+                ["threshold"] = 0.55,
+                ["prefix_padding_ms"] = 250,
+                ["silence_duration_ms"] = 350,
+                ["create_response"] = false,
+                ["interrupt_response"] = true
             };
 
         var session = new JObject
@@ -352,7 +421,7 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
                     {
                         ["model"] = _transcribeModel,
                         ["language"] = "en",
-                        ["prompt"] = "English voice commands in an AR app for controlling a 3D cube (spin, stop, speed, random color, opacity, transparent, opaque)."
+                        ["prompt"] = "Spin cube, stop spinning, set speed, random color, increase opacity, decrease opacity, set scale, jump, float, pulse, rainbow mode, reset cube."
                     },
                     ["turn_detection"] = turnDetectionToken
                 },
@@ -369,11 +438,11 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             ["session"] = session
         };
 
-        _ = ws.SendText(upd.ToString(Formatting.None));
-        Debug.Log($"[ConvoAI] Session configured: 24kHz PCM16, transcriber={_transcribeModel} (lang=en), noise_reduction=near_field, mode={(_pushToTalkMode ? "Push-To-Talk" : "Auto-VAD (threshold=0.65)")}");
+        SendWebSocketJson(upd.ToString(Formatting.None));
+        Debug.Log($"[ConvoAI] Session configured: 24kHz PCM16, transcriber={_transcribeModel} (lang=en), noise_reduction=near_field, mode={(_pushToTalkMode ? "Tap-To-Speak / PTT" : "Auto-VAD (threshold=0.55, silence=350ms)")}");
     }
 
-    private void Stream24kMicrophoneChunks()
+    private void Stream24kMicrophoneChunks(bool forceFlushRemaining = false)
     {
         if (_micClip24k == null || string.IsNullOrEmpty(_micDevice))
             return;
@@ -382,56 +451,110 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         if (currentPos < 0)
             return;
 
+        int clipSamples = _micClip24k.samples;
         int samplesAvailable = currentPos - _lastSamplePos;
         if (samplesAvailable < 0)
-            samplesAvailable += _micClip24k.samples;
+            samplesAvailable += clipSamples;
 
-        if (samplesAvailable < _chunkSamplesIn)
+        // If we aren't actively sending (e.g. AI is speaking or Tap-to-Speak is not active),
+        // advance _lastSamplePos to live currentPos so zero old audio ever accumulates!
+        bool aiPlayingAudio = _agentSpeaking || (_agentAudioSource != null && _agentAudioSource.isPlaying);
+        if (aiPlayingAudio)
+        {
+            _agentFinishedSpeakingTime = Time.unscaledTime;
+            _lastSamplePos = currentPos;
             return;
+        }
+        if (Time.unscaledTime - _agentFinishedSpeakingTime < 0.25f)
+        {
+            _lastSamplePos = currentPos;
+            return;
+        }
+        if (_pushToTalkMode && !_isHoldingTalk)
+        {
+            _lastSamplePos = currentPos;
+            return;
+        }
 
-        var inBuf = new float[_chunkSamplesIn];
-        ReadCircular(_micClip24k, _lastSamplePos, inBuf);
-        _lastSamplePos = (_lastSamplePos + _chunkSamplesIn) % _micClip24k.samples;
+        // Safety cap: if more than 0.6s of audio accumulated due to an AR frame hitch, skip stale history to keep real-time zero-lag
+        int maxAllowableLagSamples = _micClipFreq / 2;
+        if (samplesAvailable > maxAllowableLagSamples && !forceFlushRemaining)
+        {
+            _lastSamplePos = (currentPos - _chunkSamplesIn + clipSamples) % clipSamples;
+            samplesAvailable = _chunkSamplesIn;
+        }
 
-        // Calculate RMS volume for diagnostics
+        // Drain all available full chunks in a while loop so we NEVER fall behind real-time!
+        int chunksProcessedThisFrame = 0;
+        while (samplesAvailable >= _chunkSamplesIn && chunksProcessedThisFrame < 5)
+        {
+            chunksProcessedThisFrame++;
+            var inBuf = new float[_chunkSamplesIn];
+            ReadCircular(_micClip24k, _lastSamplePos, inBuf);
+            _lastSamplePos = (_lastSamplePos + _chunkSamplesIn) % clipSamples;
+            samplesAvailable -= _chunkSamplesIn;
+
+            SendAudioSamplesBuffer(inBuf);
+        }
+
+        // When finishing Tap-to-Speak, flush any partial trailing samples (> 20ms)
+        if (forceFlushRemaining && samplesAvailable > (_micClipFreq / 50))
+        {
+            var inBuf = new float[samplesAvailable];
+            ReadCircular(_micClip24k, _lastSamplePos, inBuf);
+            _lastSamplePos = currentPos;
+            SendAudioSamplesBuffer(inBuf);
+        }
+    }
+
+    private void SendAudioSamplesBuffer(float[] inBuf)
+    {
         float sumSq = 0f;
         for (int i = 0; i < inBuf.Length; i++)
             sumSq += inBuf[i] * inBuf[i];
         CurrentMicRms = Mathf.Sqrt(sumSq / Mathf.Max(1, inBuf.Length));
 
-        // Do not stream speaker echo while the AI is playing audio (plus 350ms tail)
-        bool aiPlayingAudio = _agentSpeaking || (_agentAudioSource != null && _agentAudioSource.isPlaying);
-        if (aiPlayingAudio)
-        {
-            _agentFinishedSpeakingTime = Time.unscaledTime;
-            return;
-        }
-        if (Time.unscaledTime - _agentFinishedSpeakingTime < 0.35f)
-            return;
-
-        // In Push-to-Talk mode, only stream audio while the user is holding the talk button
-        if (_pushToTalkMode && !_isHoldingTalk)
-            return;
+        _speechSamplesRecorded += inBuf.Length;
 
         byte[] pcm16Bytes = ResampleAndConvertToPcm16(inBuf, _micClipFreq, OpenAISampleRate);
         string b64 = Convert.ToBase64String(pcm16Bytes);
 
-        var ws = _wsField?.GetValue(_conversationManager) as WebSocket;
-        if (ws != null && ws.State == WebSocketState.Open)
-        {
-            var payload = new Dictionary<string, object>
-            {
-                { "type", "input_audio_buffer.append" },
-                { "audio", b64 }
-            };
-            _ = ws.SendText(JsonConvert.SerializeObject(payload));
+        // Build JSON directly without Dictionary allocation overhead
+        string json = "{\"type\":\"input_audio_buffer.append\",\"audio\":\"" + b64 + "\"}";
+        SendWebSocketJson(json, isAudioChunk: true);
 
-            SentChunksCount++;
-            LastChunkSentTime = Time.unscaledTime;
-            if (SentChunksCount == 1)
+        SentChunksCount++;
+        LastChunkSentTime = Time.unscaledTime;
+        if (SentChunksCount == 1)
+        {
+            Debug.Log("[ConvoAI] First 24kHz PCM16 audio chunk sent to OpenAI!");
+        }
+    }
+
+    private void SendWebSocketJson(string json, bool isAudioChunk = false)
+    {
+        var ws = _wsField?.GetValue(_conversationManager) as WebSocket;
+        if (ws == null || ws.State != WebSocketState.Open)
+            return;
+
+        // If this is an audio chunk, ensure NativeWebSocket's outgoing queue isn't backing up
+        if (isAudioChunk && _sendTextQueueField != null)
+        {
+            var queue = _sendTextQueueField.GetValue(ws) as IList;
+            if (queue != null && queue.Count > 6)
             {
-                Debug.Log("[ConvoAI] First 24kHz PCM16 audio chunk sent to OpenAI!");
+                // Socket is busy with older audio packets; skip this chunk to maintain real-time zero lag
+                return;
             }
+        }
+
+        try
+        {
+            _ = ws.SendText(json);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[ConvoAI] SendText warning: {ex.Message}");
         }
     }
 
