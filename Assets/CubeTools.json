@@ -1,4 +1,4 @@
-﻿{
+{
   "tools": [
     {
       "type": "function",
@@ -31,6 +31,58 @@
           }
         },
         "required": ["speed"]
+      }
+    },
+    {
+      "type": "function",
+      "name": "Cube_RandomColor",
+      "description": "Change the color of the cube to a random color",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "type": "function",
+      "name": "Cube_DecreaseOpacity",
+      "description": "Decrease the opacity of the cube (make it more transparent / see-through)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Optional amount to decrease opacity by (0.0 to 1.0, default is 0.25)"
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "Cube_IncreaseOpacity",
+      "description": "Increase the opacity of the cube (make it more solid / opaque)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "description": "Optional amount to increase opacity by (0.0 to 1.0, default is 0.25)"
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "Cube_SetOpacity",
+      "description": "Set the cube opacity to a specific value between 0.0 (transparent) and 1.0 (opaque)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "opacity": {
+            "type": "number",
+            "description": "Target opacity from 0.0 (transparent) to 1.0 (fully opaque), or percentage 0 to 100"
+          }
+        },
+        "required": ["opacity"]
       }
     }
   ]

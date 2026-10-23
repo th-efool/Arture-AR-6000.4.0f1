@@ -14,19 +14,16 @@ using UnityEngine.Android;
 [DefaultExecutionOrder(-100)]
 public class ConvoAIMicPermissionStarter : MonoBehaviour
 {
-    private static bool _spawned;
-
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoInitialize()
     {
-        if (FindFirstObjectByType<ConvoAIMicPermissionStarter>() != null)
+        if (FindAnyObjectByType<ConvoAIMicPermissionStarter>() != null)
             return;
 
-        var manager = FindFirstObjectByType<RealtimeConversationManager>();
+        var manager = FindAnyObjectByType<RealtimeConversationManager>();
         if (manager == null)
             return;
 
-        _spawned = true;
         manager.gameObject.AddComponent<ConvoAIMicPermissionStarter>();
     }
 
@@ -37,11 +34,11 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
     {
         _conversationManager = GetComponent<RealtimeConversationManager>();
         if (_conversationManager == null)
-            _conversationManager = FindFirstObjectByType<RealtimeConversationManager>();
+            _conversationManager = FindAnyObjectByType<RealtimeConversationManager>();
 
         _micStreamer = GetComponent<MicrophoneStreamer>();
         if (_micStreamer == null)
-            _micStreamer = FindFirstObjectByType<MicrophoneStreamer>();
+            _micStreamer = FindAnyObjectByType<MicrophoneStreamer>();
 
 #if UNITY_ANDROID && !UNITY_EDITOR
         // Hold MicrophoneStreamer.Start() until RECORD_AUDIO is granted so Microphone.devices is valid.
@@ -75,11 +72,11 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
         if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
         {
+            Debug.Log("[ConvoAI] Requesting Android RECORD_AUDIO permission...");
             bool requestFinished = false;
             var callbacks = new PermissionCallbacks();
             callbacks.PermissionGranted += _ => requestFinished = true;
             callbacks.PermissionDenied += _ => requestFinished = true;
-            callbacks.PermissionDeniedAndDontAskAgain += _ => requestFinished = true;
 
             Permission.RequestUserPermission(Permission.Microphone, callbacks);
 
@@ -96,6 +93,7 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             Debug.LogError("[ConvoAI] Microphone permission (RECORD_AUDIO) was not granted. Voice input cannot be sent.");
             yield break;
         }
+        Debug.Log("[ConvoAI] Android RECORD_AUDIO permission granted.");
 #elif UNITY_IOS && !UNITY_EDITOR
         if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
         {
