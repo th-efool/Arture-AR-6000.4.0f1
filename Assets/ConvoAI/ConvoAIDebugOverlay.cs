@@ -383,9 +383,6 @@ public class ConvoAIDebugOverlay : MonoBehaviour
 
         // Top bar with Mode Toggle + Clear + Hide
         GUILayout.BeginHorizontal();
-        GUILayout.Label("<color=#4FC3F7>ConvoAI (gpt-realtime-2.1-mini)</color>", _headerStyle);
-        GUILayout.FlexibleSpace();
-
         if (starter != null)
         {
             string sttLabel = $"STT: {starter.TranscribeModel}";

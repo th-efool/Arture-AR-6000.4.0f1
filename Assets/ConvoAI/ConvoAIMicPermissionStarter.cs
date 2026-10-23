@@ -314,10 +314,13 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             return;
 
         string basePrompt = _systemPromptField?.GetValue(_conversationManager) as string
-                            ?? "You are a helpful assistant who answers briefly.";
+                            ?? "You are an AR cube assistant. Be extremely concise. Keep spoken replies to 1-5 words or at most one short sentence unless the user explicitly asks for an explanation or longer detail.";
         string enhancedInstructions =
             basePrompt.Trim() +
-            "\nIMPORTANT: The user speaks in English. Always interpret user speech as English, ignore background noise or non-English audio artifacts, and use the available Cube tools whenever the user asks to spin, stop, change speed, change color, or change opacity of the cube.";
+            "\nCRITICAL RULES:" +
+            "\n1. Be extremely brief. Speak only 1 to 5 words or at most a single short sentence (e.g. 'Spinning now', 'Stopped', 'Color changed', 'Done') unless the user explicitly demands a long answer or detailed explanation." +
+            "\n2. When asked to control the cube (spin, stop, speed, color, opacity), trigger the tool immediately without unnecessary commentary." +
+            "\n3. Always listen and speak strictly in English. Ignore background noise and non-English phonetic artifacts.";
 
         string voiceStr = _resolveVoiceMethod?.Invoke(_conversationManager, null) as string ?? "alloy";
 

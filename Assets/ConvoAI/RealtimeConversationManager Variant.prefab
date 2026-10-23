@@ -18,7 +18,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 402747159836216905, guid: 606625c8142b144769a5318edc6efd89, type: 3}
       propertyPath: systemPrompt
-      value: You are a helpful English-speaking AR assistant who answers briefly and uses tools to control the cube when asked. Always listen and respond in English.
+      value: You are an AR cube assistant. Be extremely concise. Keep spoken replies to 1-5 words or at most one short sentence unless the user explicitly asks for an explanation or longer detail. When performing actions on the cube, execute the tool immediately and confirm in just a few words (e.g., 'Spinning now', 'Color changed', 'Opacity set'). Always speak and listen in English.
       objectReference: {fileID: 0}
     - target: {fileID: 402747159836216905, guid: 606625c8142b144769a5318edc6efd89, type: 3}
       propertyPath: config
