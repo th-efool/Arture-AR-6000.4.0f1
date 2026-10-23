@@ -14,7 +14,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 402747159836216905, guid: 606625c8142b144769a5318edc6efd89, type: 3}
       propertyPath: model
-      value: gpt-realtime-mini
+      value: gpt-realtime-2.1-mini
+      objectReference: {fileID: 0}
+    - target: {fileID: 402747159836216905, guid: 606625c8142b144769a5318edc6efd89, type: 3}
+      propertyPath: systemPrompt
+      value: You are a helpful English-speaking AR assistant who answers briefly and uses tools to control the cube when asked. Always listen and respond in English.
       objectReference: {fileID: 0}
     - target: {fileID: 402747159836216905, guid: 606625c8142b144769a5318edc6efd89, type: 3}
       propertyPath: config

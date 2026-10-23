@@ -12,8 +12,8 @@ using UnityEngine.Android;
 
 /// <summary>
 /// Renders a live status panel and conversational API log overlay in the top-left corner of the screen.
-/// Tracks permission state, microphone capture, WebSocket state, OpenAI Realtime API events,
-/// transcripts, and custom tool registrations/invocations.
+/// Tracks permission state, 24kHz microphone capture, WebSocket state, OpenAI Realtime API events,
+/// transcripts, custom tool registrations/invocations, and provides Auto-VAD / Push-to-Talk controls.
 /// </summary>
 [DefaultExecutionOrder(-90)]
 public class ConvoAIDebugOverlay : MonoBehaviour
@@ -56,7 +56,9 @@ public class ConvoAIDebugOverlay : MonoBehaviour
     private GUIStyle _statusStyle;
     private GUIStyle _logStyle;
     private GUIStyle _buttonStyle;
+    private GUIStyle _pttActiveStyle;
     private Texture2D _bgTex;
+    private Texture2D _pttActiveTex;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void RegisterEarlyLogListener()
@@ -238,16 +240,23 @@ public class ConvoAIDebugOverlay : MonoBehaviour
     {
         _micChunkCount++;
         _lastMicChunkTime = Time.unscaledTime;
-        if (_micChunkCount == 1)
-        {
-            AddLog("[ConvoAI] First microphone PCM audio chunk captured & streaming!");
-        }
     }
 
     private void Update()
     {
         if (_manager == null || _micStreamer == null)
             BindSceneComponents();
+
+        // If Push-To-Talk button is held and user releases touch/mouse anywhere on screen, commit the speech
+        var starter = ConvoAIMicPermissionStarter.Instance;
+        if (starter != null && starter.PushToTalkMode && starter.IsHoldingTalk)
+        {
+            bool anyPressed = Input.GetMouseButton(0) || Input.touchCount > 0;
+            if (!anyPressed)
+            {
+                starter.EndPushToTalk();
+            }
+        }
 
         lock (LogLock)
         {
@@ -266,8 +275,15 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         if (_bgTex == null)
         {
             _bgTex = new Texture2D(1, 1);
-            _bgTex.SetPixel(0, 0, new Color(0.05f, 0.07f, 0.1f, 0.82f));
+            _bgTex.SetPixel(0, 0, new Color(0.05f, 0.07f, 0.1f, 0.84f));
             _bgTex.Apply();
+        }
+
+        if (_pttActiveTex == null)
+        {
+            _pttActiveTex = new Texture2D(1, 1);
+            _pttActiveTex.SetPixel(0, 0, new Color(0.15f, 0.65f, 0.25f, 0.95f));
+            _pttActiveTex.Apply();
         }
 
         int fontSize = Mathf.RoundToInt(13f * scale);
@@ -321,6 +337,18 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             };
         }
         _buttonStyle.fontSize = fontSize;
+
+        if (_pttActiveStyle == null)
+        {
+            _pttActiveStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontStyle = FontStyle.Bold,
+                normal = { background = _pttActiveTex, textColor = Color.white },
+                active = { background = _pttActiveTex, textColor = Color.white },
+                hover = { background = _pttActiveTex, textColor = Color.white }
+            };
+        }
+        _pttActiveStyle.fontSize = headerSize;
     }
 
     private void OnGUI()
@@ -331,7 +359,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         Rect safe = Screen.safeArea;
         float x = Mathf.Max(12f, safe.xMin + 10f);
         float y = Mathf.Max(12f, Screen.height - safe.yMax + 10f);
-        float width = Mathf.Min(Screen.width - x * 2f, 520f * scale);
+        float width = Mathf.Min(Screen.width - x * 2f, 540f * scale);
 
         if (_minimized)
         {
@@ -344,40 +372,83 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             return;
         }
 
-        float height = Mathf.Min(Screen.height * 0.48f, 380f * scale);
+        float height = Mathf.Min(Screen.height * 0.52f, 410f * scale);
         Rect panelRect = new Rect(x, y, width, height);
         GUI.Box(panelRect, GUIContent.none, _boxStyle);
 
         GUILayout.BeginArea(new Rect(panelRect.x + 8f, panelRect.y + 6f, panelRect.width - 16f, panelRect.height - 12f));
 
-        // Top bar
+        var starter = ConvoAIMicPermissionStarter.Instance;
+        bool isPtt = starter != null && starter.PushToTalkMode;
+
+        // Top bar with Mode Toggle + Clear + Hide
         GUILayout.BeginHorizontal();
-        GUILayout.Label("<color=#4FC3F7>ConvoAI Realtime Diagnostics</color>", _headerStyle);
+        GUILayout.Label("<color=#4FC3F7>ConvoAI (gpt-realtime-2.1-mini)</color>", _headerStyle);
         GUILayout.FlexibleSpace();
-        if (GUILayout.Button("Clear", _buttonStyle, GUILayout.Width(60f * scale), GUILayout.Height(26f * scale)))
+
+        if (starter != null)
+        {
+            string sttLabel = $"STT: {starter.TranscribeModel}";
+            if (GUILayout.Button(sttLabel, _buttonStyle, GUILayout.Width(135f * scale), GUILayout.Height(28f * scale)))
+            {
+                starter.ToggleTranscribeModel();
+            }
+
+            string modeLabel = isPtt ? "Mode: Push-To-Talk" : "Mode: Auto-VAD (EN)";
+            if (GUILayout.Button(modeLabel, _buttonStyle, GUILayout.Width(135f * scale), GUILayout.Height(28f * scale)))
+            {
+                starter.SetPushToTalkMode(!isPtt);
+            }
+        }
+
+        if (GUILayout.Button("Clear", _buttonStyle, GUILayout.Width(55f * scale), GUILayout.Height(28f * scale)))
         {
             _logs.Clear();
         }
-        if (GUILayout.Button("Hide", _buttonStyle, GUILayout.Width(55f * scale), GUILayout.Height(26f * scale)))
+        if (GUILayout.Button("Hide", _buttonStyle, GUILayout.Width(55f * scale), GUILayout.Height(28f * scale)))
         {
             _minimized = true;
         }
         GUILayout.EndHorizontal();
+
+        // Push-to-Talk Hold Button when PTT mode is enabled
+        if (starter != null && isPtt)
+        {
+            GUILayout.Space(4f);
+            Rect pttRect = GUILayoutUtility.GetRect(width - 24f, 42f * scale);
+            bool holding = starter.IsHoldingTalk;
+            string btnText = holding ? "LISTENING... (Release to Send to AI)" : "HOLD TO TALK (English)";
+            GUI.Box(pttRect, btnText, holding ? _pttActiveStyle : _buttonStyle);
+
+            Event e = Event.current;
+            if (e.type == EventType.MouseDown && pttRect.Contains(e.mousePosition))
+            {
+                starter.BeginPushToTalk();
+                e.Use();
+            }
+            else if (e.type == EventType.MouseUp && holding)
+            {
+                starter.EndPushToTalk();
+                e.Use();
+            }
+            GUILayout.Space(4f);
+        }
 
         // Live stage status summary
         string permStatus = GetPermissionStatusText();
         string wsStatus = GetWebSocketStatusText();
         string micStatus = GetMicrophoneStatusText();
         string toolCount = GetToolCountText();
+        bool userActive = _userSpeaking || (starter != null && starter.IsHoldingTalk);
 
         GUILayout.Label(
-            $"<b>1. Mic Perm:</b> {permStatus}   |   <b>2. Mic Input:</b> {micStatus}\n" +
+            $"<b>1. Mic Perm:</b> {permStatus}   |   <b>2. 24kHz Mic:</b> {micStatus}\n" +
             $"<b>3. WebSocket:</b> {wsStatus}   |   <b>4. Tools:</b> {toolCount}\n" +
-            $"<b>5. Voice State:</b> User={( _userSpeaking ? "<color=#66BB6A>SPEAKING</color>" : "Idle" )} | Agent={( _agentSpeaking ? "<color=#FFA726>SPEAKING</color>" : "Idle" )}",
+            $"<b>5. Voice State:</b> User={( userActive ? "<color=#66BB6A>SPEAKING</color>" : "Idle" )} | Agent={( _agentSpeaking ? "<color=#FFA726>SPEAKING</color>" : "Idle" )}",
             _statusStyle);
 
         if (!string.IsNullOrEmpty(_lastUserTranscript))
-            GUILayout.Label($"<color=#B0BEC5><b>User:</b> {_lastUserTranscript}</color>", _statusStyle);
+            GUILayout.Label($"<color=#B0BEC5><b>User (EN):</b> {_lastUserTranscript}</color>", _statusStyle);
 
         if (!string.IsNullOrEmpty(_lastAgentTranscript))
         {
@@ -442,6 +513,18 @@ public class ConvoAIDebugOverlay : MonoBehaviour
 
     private string GetMicrophoneStatusText()
     {
+        var starter = ConvoAIMicPermissionStarter.Instance;
+        if (starter != null && starter.IsCapturing24k)
+        {
+            bool recent = (Time.unscaledTime - starter.LastChunkSentTime) < 1.0f;
+            if (starter.PushToTalkMode && !starter.IsHoldingTalk)
+                return $"<color=#FFD54F>PTT Ready ({starter.SentChunksCount} pkts)</color>";
+
+            return recent
+                ? $"<color=#66BB6A>Streaming 24kHz ({starter.SentChunksCount} pkts)</color>"
+                : $"<color=#FFD54F>Gated/Idle ({starter.SentChunksCount} pkts)</color>";
+        }
+
         if (_micStreamer == null)
             return "<color=#FF5252>No Streamer</color>";
 
@@ -452,14 +535,12 @@ public class ConvoAIDebugOverlay : MonoBehaviour
 
         if (isRec && clip != null)
         {
-            string chunkBadge = recentChunk ? $"<color=#66BB6A>Streaming ({_micChunkCount} pkts)</color>" : $"<color=#FFD54F>Rec ({_micChunkCount} pkts)</color>";
-            return chunkBadge;
+            return recentChunk
+                ? $"<color=#66BB6A>Streaming ({_micChunkCount} pkts)</color>"
+                : $"<color=#FFD54F>Rec ({_micChunkCount} pkts)</color>";
         }
 
-        if (string.IsNullOrEmpty(dev))
-            return "<color=#FF5252>No Mic Device</color>";
-
-        return "<color=#FFD54F>Idle</color>";
+        return "<color=#FFD54F>Waiting Session</color>";
     }
 
     private static string GetToolCountText()
