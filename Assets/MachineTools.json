@@ -29,6 +29,46 @@
         "required": ["component", "answer"],
         "additionalProperties": false
       }
+    },
+    {
+      "type": "function",
+      "name": "Machine_SetScale",
+      "description": "Increase or decrease the machine's size by multiplying its current scale. Use multiplier above 1 to enlarge and below 1 to reduce.",
+      "parameters": {
+        "type": "object",
+        "properties": { "multiplier": { "type": "number", "description": "Scale multiplier from 0.5 to 2.0." } },
+        "required": ["multiplier"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
+      "name": "Machine_Rotate",
+      "description": "Rotate the machine around its world X, Y, or Z axis.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "axis": { "type": "string", "enum": ["x", "y", "z"] },
+          "degrees": { "type": "number", "description": "Degrees to rotate, from -180 to 180." }
+        },
+        "required": ["axis", "degrees"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
+      "name": "Machine_Translate",
+      "description": "Move the machine in world space by the supplied X, Y, and Z metre offsets.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "z": { "type": "number" }
+        },
+        "required": ["x", "y", "z"],
+        "additionalProperties": false
+      }
     }
   ]
 }

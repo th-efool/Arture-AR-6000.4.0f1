@@ -188,6 +188,33 @@ public class MachineInteraction : MonoBehaviour
         selectedRenderers = null;
     }
 
+    public JObject Machine_SetScale(JObject args)
+    {
+        float multiplier = args?.Value<float?>("multiplier") ?? 1f;
+        multiplier = Mathf.Clamp(multiplier, 0.5f, 2f);
+        transform.localScale *= multiplier;
+        return new JObject { ["ok"] = true, ["multiplier"] = multiplier, ["scale"] = transform.localScale.ToString() };
+    }
+
+    public JObject Machine_Rotate(JObject args)
+    {
+        float degrees = Mathf.Clamp(args?.Value<float?>("degrees") ?? 15f, -180f, 180f);
+        string axis = (args?.Value<string>("axis") ?? "y").ToLowerInvariant();
+        Vector3 rotationAxis = axis == "x" ? Vector3.right : axis == "z" ? Vector3.forward : Vector3.up;
+        transform.Rotate(rotationAxis, degrees, Space.World);
+        return new JObject { ["ok"] = true, ["axis"] = axis, ["degrees"] = degrees };
+    }
+
+    public JObject Machine_Translate(JObject args)
+    {
+        float x = Mathf.Clamp(args?.Value<float?>("x") ?? 0f, -2f, 2f);
+        float y = Mathf.Clamp(args?.Value<float?>("y") ?? 0f, -2f, 2f);
+        float z = Mathf.Clamp(args?.Value<float?>("z") ?? 0f, -2f, 2f);
+        Vector3 offset = new Vector3(x, y, z);
+        transform.position += offset;
+        return new JObject { ["ok"] = true, ["offset"] = offset.ToString(), ["position"] = transform.position.ToString() };
+    }
+
     private void ApplyHighlight()
     {
         foreach (Renderer renderer in selectedRenderers)
