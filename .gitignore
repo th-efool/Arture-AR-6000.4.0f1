@@ -105,3 +105,12 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Sensitive API Keys & Configurations
+/[Aa]ssets/[Rr]esources/[Oo]pen[Aa][Ii][Cc]onfig.asset*
+**/OpenAIConfig.asset
+**/OpenAIConfig.asset.meta
+
+# Local tool caches and generated artifacts
+graphify-out/
+
