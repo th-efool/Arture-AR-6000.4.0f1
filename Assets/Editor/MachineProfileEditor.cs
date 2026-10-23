@@ -25,21 +25,33 @@ public class MachineProfileEditor : Editor
 
         EditorGUILayout.PropertyField(machineID);
         EditorGUILayout.PropertyField(machineName);
-
-        EditorGUI.BeginChangeCheck();
         EditorGUILayout.PropertyField(machineType);
-        bool typeChanged = EditorGUI.EndChangeCheck();
 
-        if (typeChanged)
+        if (machineType.enumValueIndex < 0 ||
+            machineType.enumValueIndex >= machineType.enumNames.Length)
         {
-            PopulateComponents();
-            serializedObject.Update();
+            EditorGUILayout.HelpBox(
+                "Invalid machine type. Re-select a valid machine type.",
+                MessageType.Error);
+
+            serializedObject.ApplyModifiedProperties();
+            return;
         }
 
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField(
-            "Machine Components",
-            EditorStyles.boldLabel);
+        if (machineType.hasMultipleDifferentValues)
+        {
+            EditorGUILayout.HelpBox(
+                "Select a single machine profile to edit its components.",
+                MessageType.Info);
+
+            serializedObject.ApplyModifiedProperties();
+            return;
+        }
+
+        if (serializedObject.hasModifiedProperties)
+            serializedObject.ApplyModifiedProperties();
+
+        serializedObject.Update();
 
         Type enumType = MachineDefinitions.GetComponentEnumType(
             (MachineType)machineType.enumValueIndex);
@@ -49,13 +61,23 @@ public class MachineProfileEditor : Editor
         if (components.arraySize != enumValues.Length)
         {
             EditorGUILayout.HelpBox(
-                "Component list does not match the selected machine type. " +
-                "Change the machine type to regenerate it.",
+                "Component list needs initialization for this machine type.",
                 MessageType.Warning);
+
+            if (GUILayout.Button("Generate Components"))
+            {
+                PopulateComponents();
+                serializedObject.Update();
+            }
 
             serializedObject.ApplyModifiedProperties();
             return;
         }
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField(
+            "Machine Components",
+            EditorStyles.boldLabel);
 
         for (int i = 0; i < components.arraySize; i++)
         {

@@ -7890,7 +7890,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 3564914339968251930}
-  - component: {fileID: 3584507362652191690}
   - component: {fileID: 1500477631782305500}
   m_Layer: 0
   m_Name: WaterPump
@@ -7927,22 +7926,6 @@ Transform:
   - {fileID: 3970857630325444821}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &3584507362652191690
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7863459636288244251}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fc100347e3ca30a4da4b437404ac20e1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::MachineProfile
-  MachineID: 
-  Name: 
-  MachineType: 4
-  Components: []
 --- !u!114 &1500477631782305500
 MonoBehaviour:
   m_ObjectHideFlags: 0
