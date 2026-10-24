@@ -16,4 +16,4 @@ MonoBehaviour:
   relayAccessToken:
   assetCode: ATR-DEMO-PUMP-001
   directOpenAIWebsocketUrl: wss://api.openai.com/v1/realtime
-  fallbackOpenAIApiKey:
+  fallbackOpenAIApiKey: 

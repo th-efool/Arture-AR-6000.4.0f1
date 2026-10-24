@@ -79,10 +79,15 @@ namespace OpenAI
         private bool _terminalRelayError;
         private string _workerPhone;
         private bool _isDirectOpenAIFallback;
+        private int _relayFailures = 0;
         private ArtureRelaySettings _activeSettings;
         public string WorkerName { get; private set; } = "Unassigned";
         public string KnowledgeStatus { get; private set; } = "idle";
         public string KnowledgeSourcesSummary { get; private set; } = string.Empty;
+        public bool IsDirectOpenAIFallback => _isDirectOpenAIFallback;
+        public string ActiveRelayUrl => _activeSettings?.url;
+        public string CloudRelayUrl => _activeSettings?.cloudUrl ?? "wss://arture-voice-relay.onrender.com/realtime";
+        public bool IsSessionReady => _sessionReady;
 
         #endregion
 
@@ -138,9 +143,10 @@ namespace OpenAI
             {
                 Debug.LogError($"[Arture] Connection attempt failed ({ex.GetType().Name}): {ex.Message}");
                 _ws = null;
-                if (!_isDirectOpenAIFallback && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
+                _relayFailures++;
+                if (!_isDirectOpenAIFallback && _relayFailures >= 3 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
                 {
-                    Debug.LogWarning("[Arture] Backend relay unreachable. Automatically falling back directly to OpenAI Realtime API...");
+                    Debug.LogWarning("[Arture] Live backend relay unreachable after 3 attempts. Falling back directly to OpenAI Realtime API...");
                     _isDirectOpenAIFallback = true;
                     _starting = false;
                     StartAgent();
@@ -153,6 +159,19 @@ namespace OpenAI
 
         public void StopAgent() => _ = Shutdown();
         public void RequestResponse() => SendResponseCreate();
+        public async void ForceReconnectRelay(string overrideUrl = null)
+        {
+            _isDirectOpenAIFallback = false;
+            if (_activeSettings != null && !string.IsNullOrWhiteSpace(overrideUrl))
+            {
+                _activeSettings.url = overrideUrl;
+                _activeSettings.deviceUrl = overrideUrl;
+            }
+            await Shutdown();
+            _starting = false;
+            StartAgent();
+        }
+
         public void IdentifyWorker(string phone)
         {
             _workerPhone = phone ?? "";
@@ -683,6 +702,7 @@ namespace OpenAI
             var socket = _ws;
             socket.OnOpen += () =>
             {
+                _relayFailures = 0;
                 WorkerName = "Unassigned";
                 KnowledgeStatus = _isDirectOpenAIFallback ? "direct_openai" : "idle";
                 KnowledgeSourcesSummary = string.Empty;
@@ -705,13 +725,17 @@ namespace OpenAI
                 _agentCurrentlySpeaking = false;
                 onAgentSpeaking?.Invoke(false);
 
-                // If relay closed before session ready and we have OpenAI key, switch to fallback
-                if (!_sessionReady && !_isDirectOpenAIFallback && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
+                // Retry relay first so Render cold-starts and live logging work
+                if (!_sessionReady && !_isDirectOpenAIFallback)
                 {
-                    Debug.LogWarning("[Arture] Relay closed before session ready. Falling back directly to OpenAI Realtime API...");
-                    _isDirectOpenAIFallback = true;
-                    StartAgent();
-                    return;
+                    _relayFailures++;
+                    if (_relayFailures >= 3 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
+                    {
+                        Debug.LogWarning("[Arture] Relay closed before session ready (3 attempts). Falling back directly to OpenAI Realtime API...");
+                        _isDirectOpenAIFallback = true;
+                        StartAgent();
+                        return;
+                    }
                 }
 
                 ScheduleReconnect();
@@ -720,12 +744,16 @@ namespace OpenAI
             socket.OnError += err =>
             {
                 Debug.LogError($"[Arture] Transport error: {err}");
-                if (!_sessionReady && !_isDirectOpenAIFallback && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
+                if (!_sessionReady && !_isDirectOpenAIFallback)
                 {
-                    Debug.LogWarning("[Arture] Relay transport error during connection. Falling back directly to OpenAI Realtime API...");
-                    _isDirectOpenAIFallback = true;
-                    _ws = null;
-                    StartAgent();
+                    _relayFailures++;
+                    if (_relayFailures >= 3 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
+                    {
+                        Debug.LogWarning("[Arture] Relay transport error during connection (3 attempts). Falling back directly to OpenAI Realtime API...");
+                        _isDirectOpenAIFallback = true;
+                        _ws = null;
+                        StartAgent();
+                    }
                 }
             };
             _ws.OnMessage += OnSocketMessage;

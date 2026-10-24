@@ -11,16 +11,16 @@ using UnityEngine.Android;
 #endif
 
 /// <summary>
-/// Renders a live status panel and conversational API log overlay in the top-left corner of the screen.
-/// Tracks permission state, 24kHz microphone capture, WebSocket state, OpenAI Realtime API events,
-/// transcripts, custom tool registrations/invocations, and provides Auto-VAD / Push-to-Talk controls.
+/// High-signal live status panel and conversational event log overlay.
+/// Displays clear backend relay state, 24kHz capture, tools, transcripts, and Tap-to-Speak.
+/// Automatically filters noisy spam to maximize vertical screen real estate for vital events.
 /// </summary>
 [DefaultExecutionOrder(-90)]
 public class ConvoAIDebugOverlay : MonoBehaviour
 {
     public static ConvoAIDebugOverlay Instance { get; private set; }
 
-    private const int MaxLogEntries = 45;
+    private const int MaxLogEntries = 60;
 
     private struct LogItem
     {
@@ -32,6 +32,11 @@ public class ConvoAIDebugOverlay : MonoBehaviour
     private readonly List<LogItem> _logs = new List<LogItem>();
     private Vector2 _scrollPos;
     private bool _minimized;
+    public bool IsMinimized
+    {
+        get => _minimized;
+        set => _minimized = value;
+    }
 
     private RealtimeConversationManager _manager;
     private MicrophoneStreamer _micStreamer;
@@ -85,7 +90,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
     {
         var item = new LogItem
         {
-            Timestamp = DateTime.Now.ToString("HH:mm:ss.fff"),
+            Timestamp = DateTime.Now.ToString("HH:mm:ss"),
             Message = message,
             Type = type
         };
@@ -101,14 +106,26 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         if (string.IsNullOrEmpty(condition))
             return;
 
+        // Filter out noisy spam to preserve screen height for real events
+        if (condition.IndexOf("VAD: User speech", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("Agent audio response", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("First 24kHz PCM16 audio chunk", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("Registered Tools (", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("Loading SFX", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("Tap to Speak: LISTENING", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("Tap to speak finished", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("Hooked into RealtimeConversationManager", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("dispatched message", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return;
+        }
+
         bool isRelevant =
             condition.IndexOf("[OpenAI]", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("[ConvoAI]", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("[MachineInteraction]", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("[WorldSpaceUI]", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            condition.IndexOf("[MicrophoneStreamer]", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            condition.IndexOf("MicrophoneStreamer", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            condition.IndexOf("[TestTools]", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("[Arture]", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("ToolBindings", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("Machine_", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("Cube_", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -118,7 +135,26 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         if (!isRelevant)
             return;
 
-        AddLog(condition, type);
+        string clean = condition
+            .Replace("[OpenAI] ", "")
+            .Replace("[ConvoAI] ", "")
+            .Replace("[MachineInteraction] ", "")
+            .Replace("[WorldSpaceUI] ", "")
+            .Replace("[Arture] ", "");
+
+        // Prefix high-signal icons for fast glanceability
+        if (clean.IndexOf("Machine_ShowAnswer", StringComparison.OrdinalIgnoreCase) >= 0)
+            clean = "🔧 " + clean;
+        else if (clean.IndexOf("Machine_ShowMessage", StringComparison.OrdinalIgnoreCase) >= 0)
+            clean = "🔧 " + clean;
+        else if (clean.IndexOf("WorldSpaceUI", StringComparison.OrdinalIgnoreCase) >= 0)
+            clean = "🏷️ " + clean;
+        else if (clean.IndexOf("Connecting directly to OpenAI Realtime", StringComparison.OrdinalIgnoreCase) >= 0)
+            clean = "⚠️ Direct OpenAI (Fallback Active)";
+        else if (clean.IndexOf("Connecting to Arture Voice Relay", StringComparison.OrdinalIgnoreCase) >= 0)
+            clean = "🌐 Relay: " + clean;
+
+        AddLog(clean, type);
     }
 
     private void Awake()
@@ -137,7 +173,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         _micClipField = typeof(MicrophoneStreamer).GetField("_microphoneClip", BindingFlags.Instance | BindingFlags.NonPublic);
         _micDeviceField = typeof(MicrophoneStreamer).GetField("_micDevice", BindingFlags.Instance | BindingFlags.NonPublic);
 
-        AddLog("[ConvoAI] Debug overlay initialized.");
+        AddLog("🚀 ConvoAI Debug Overlay initialized.");
     }
 
     private void Start()
@@ -168,18 +204,21 @@ public class ConvoAIDebugOverlay : MonoBehaviour
                 if (speaking)
                 {
                     _agentTranscriptBuilder.Clear();
-                    AddLog("[ConvoAI] VAD: User speech STARTED");
-                }
-                else
-                {
-                    AddLog("[ConvoAI] VAD: User speech STOPPED (committing audio & requesting response)");
                 }
             });
 
             _manager.onAgentSpeaking.AddListener(speaking =>
             {
                 _agentSpeaking = speaking;
-                AddLog(speaking ? "[ConvoAI] Agent audio response STARTED" : "[ConvoAI] Agent audio response FINISHED");
+                if (!speaking && _agentTranscriptBuilder.Length > 0)
+                {
+                    string reply = _agentTranscriptBuilder.ToString().Trim();
+                    if (!string.IsNullOrEmpty(reply))
+                    {
+                        string shortReply = reply.Length > 110 ? reply.Substring(0, 107) + "..." : reply;
+                        AddLog($"🤖 AI: \"{shortReply}\"");
+                    }
+                }
             });
 
             _manager.onUserTranscript.AddListener(text =>
@@ -187,7 +226,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
                 if (!string.IsNullOrEmpty(text))
                 {
                     _lastUserTranscript = text.Trim();
-                    AddLog($"[ConvoAI] User Transcript: \"{_lastUserTranscript}\"");
+                    AddLog($"💬 You: \"{_lastUserTranscript}\"");
                 }
             });
 
@@ -199,8 +238,6 @@ public class ConvoAIDebugOverlay : MonoBehaviour
                     _lastAgentTranscript = _agentTranscriptBuilder.ToString();
                 }
             });
-
-            AddLog("[ConvoAI] Hooked into RealtimeConversationManager events.");
         }
 
         if (_micStreamer != null)
@@ -217,26 +254,13 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         try
         {
             JArray specs = AgentToolRegistry.GetToolsSpec();
-            if (specs != null && specs.Count > 0)
+            int count = specs != null ? specs.Count : 0;
+            if (count > 0)
             {
-                var names = new List<string>();
-                foreach (var token in specs)
-                {
-                    var n = token["name"]?.ToString();
-                    if (!string.IsNullOrEmpty(n))
-                        names.Add(n);
-                }
-                AddLog($"[ConvoAI] Registered Tools ({names.Count}): {string.Join(", ", names)}");
-            }
-            else
-            {
-                AddLog("[ConvoAI] Warning: 0 tools registered in AgentToolRegistry!", LogType.Warning);
+                AddLog($"📦 Registered {count} AI Tools (Water Pump & Cube)");
             }
         }
-        catch (Exception ex)
-        {
-            AddLog($"[ConvoAI] Failed to inspect AgentToolRegistry: {ex.Message}", LogType.Warning);
-        }
+        catch {}
     }
 
     private void OnMicAudioChunk(string b64)
@@ -267,26 +291,26 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         if (_bgTex == null)
         {
             _bgTex = new Texture2D(1, 1);
-            _bgTex.SetPixel(0, 0, new Color(0.05f, 0.07f, 0.1f, 0.84f));
+            _bgTex.SetPixel(0, 0, new Color(0.04f, 0.06f, 0.09f, 0.88f));
             _bgTex.Apply();
         }
 
         if (_pttActiveTex == null)
         {
             _pttActiveTex = new Texture2D(1, 1);
-            _pttActiveTex.SetPixel(0, 0, new Color(0.15f, 0.65f, 0.25f, 0.95f));
+            _pttActiveTex.SetPixel(0, 0, new Color(0.12f, 0.62f, 0.24f, 0.95f));
             _pttActiveTex.Apply();
         }
 
-        int fontSize = Mathf.RoundToInt(13f * scale);
-        int headerSize = Mathf.RoundToInt(15f * scale);
+        int fontSize = Mathf.RoundToInt(12f * scale);
+        int headerSize = Mathf.RoundToInt(14f * scale);
 
         if (_boxStyle == null)
         {
             _boxStyle = new GUIStyle(GUI.skin.box)
             {
                 normal = { background = _bgTex, textColor = Color.white },
-                padding = new RectOffset(10, 10, 8, 8)
+                padding = new RectOffset(8, 8, 6, 6)
             };
         }
 
@@ -305,7 +329,8 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             _statusStyle = new GUIStyle(GUI.skin.label)
             {
                 richText = true,
-                wordWrap = true
+                wordWrap = true,
+                margin = new RectOffset(0, 0, 1, 1)
             };
         }
         _statusStyle.fontSize = fontSize;
@@ -316,7 +341,8 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             {
                 richText = true,
                 wordWrap = true,
-                margin = new RectOffset(0, 0, 1, 1)
+                margin = new RectOffset(0, 0, 1, 1),
+                padding = new RectOffset(0, 0, 0, 0)
             };
         }
         _logStyle.fontSize = fontSize;
@@ -353,62 +379,88 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         float y = Mathf.Max(12f, Screen.height - safe.yMax + 10f);
         float width = Mathf.Min(Screen.width - x * 2f, 540f * scale);
 
+        var starter = ConvoAIMicPermissionStarter.Instance ?? FindAnyObjectByType<ConvoAIMicPermissionStarter>();
+        bool isListening = starter != null && starter.IsListening;
+        bool isPtt = starter != null && starter.PushToTalkMode;
+
         if (_minimized)
         {
-            Rect minRect = new Rect(x, y, 220f * scale, 38f * scale);
+            float btnHeight = 44f * scale;
+            float showBtnWidth = 96f * scale;
+            float maxAvailableWidth = Screen.width - x * 2f;
+            float speakBtnWidth = Mathf.Clamp(maxAvailableWidth - showBtnWidth - 14f, 180f * scale, 320f * scale);
+            float totalW = speakBtnWidth + showBtnWidth + 10f;
+
+            Rect minRect = new Rect(x, y, totalW + 12f, btnHeight + 12f);
             GUI.Box(minRect, GUIContent.none, _boxStyle);
-            if (GUI.Button(new Rect(x + 6f, y + 4f, minRect.width - 12f, minRect.height - 8f), "Show ConvoAI Logs", _buttonStyle))
+
+            string btnText;
+            if (isListening)
+            {
+                btnText = $"⏹️ LISTENING ({starter.CurrentSpeechDuration:F1}s) - STOP";
+            }
+            else if (_agentSpeaking)
+            {
+                btnText = "🔊 AGENT SPEAKING (TAP TO TALK)";
+            }
+            else
+            {
+                btnText = "🎤 TAP TO SPEAK";
+            }
+
+            GUIStyle activeBtnStyle = isListening ? _pttActiveStyle : _buttonStyle;
+            if (GUI.Button(new Rect(x + 6f, y + 6f, speakBtnWidth, btnHeight), btnText, activeBtnStyle))
+            {
+                if (starter != null)
+                {
+                    starter.ToggleTapToSpeak();
+                }
+            }
+
+            if (GUI.Button(new Rect(x + 6f + speakBtnWidth + 8f, y + 6f, showBtnWidth, btnHeight), "Logs ⚙️", _buttonStyle))
             {
                 _minimized = false;
             }
+
             return;
         }
 
-        float height = Mathf.Min(Screen.height * 0.52f, 410f * scale);
+        float height = Mathf.Min(Screen.height * 0.62f, 460f * scale);
         Rect panelRect = new Rect(x, y, width, height);
         GUI.Box(panelRect, GUIContent.none, _boxStyle);
 
-        GUILayout.BeginArea(new Rect(panelRect.x + 8f, panelRect.y + 6f, panelRect.width - 16f, panelRect.height - 12f));
-
-        var starter = ConvoAIMicPermissionStarter.Instance;
-        bool isPtt = starter != null && starter.PushToTalkMode;
-
-        // Top bar with Mode Toggle + Clear + Hide
+        GUILayout.BeginArea(new Rect(panelRect.x + 8f, panelRect.y + 6f, panelRect.width - 16f, panelRect.height - 12f));        // Top bar with Mode Toggle + Clear + Hide
         GUILayout.BeginHorizontal();
+
         if (starter != null)
         {
-            string sttLabel = $"STT: {starter.TranscribeModel}";
-            if (GUILayout.Button(sttLabel, _buttonStyle, GUILayout.Width(135f * scale), GUILayout.Height(28f * scale)))
-            {
-                starter.ToggleTranscribeModel();
-            }
-
-            string modeLabel = isPtt ? "Mode: Tap-To-Speak" : "Mode: Auto-VAD (EN)";
-            if (GUILayout.Button(modeLabel, _buttonStyle, GUILayout.Width(135f * scale), GUILayout.Height(28f * scale)))
+            string modeLabel = isPtt ? "Mode: PTT" : "Mode: Auto-VAD";
+            if (GUILayout.Button(modeLabel, _buttonStyle, GUILayout.Width(110f * scale), GUILayout.Height(28f * scale)))
             {
                 starter.SetPushToTalkMode(!isPtt);
             }
         }
 
-        if (GUILayout.Button("Clear", _buttonStyle, GUILayout.Width(55f * scale), GUILayout.Height(28f * scale)))
+        GUILayout.FlexibleSpace();
+
+        if (GUILayout.Button("Clear", _buttonStyle, GUILayout.Width(60f * scale), GUILayout.Height(28f * scale)))
         {
             _logs.Clear();
         }
-        if (GUILayout.Button("Hide", _buttonStyle, GUILayout.Width(55f * scale), GUILayout.Height(28f * scale)))
+        if (GUILayout.Button("Hide", _buttonStyle, GUILayout.Width(60f * scale), GUILayout.Height(28f * scale)))
         {
             _minimized = true;
         }
         GUILayout.EndHorizontal();
 
-        // Tap-to-Speak Button: Supports both single Tap-to-Toggle AND Press-and-Hold!
+        // Tap-to-Speak Button
         if (starter != null)
         {
-            GUILayout.Space(3f);
-            bool isListening = starter.IsListening;
+            GUILayout.Space(2f);
             string btnText;
             if (isListening)
             {
-                btnText = $"⏹️ LISTENING ({starter.CurrentSpeechDuration:F1}s) - TAP TO STOP & SEND";
+                btnText = $"⏹️ LISTENING ({starter.CurrentSpeechDuration:F1}s) - TAP TO SEND";
             }
             else
             {
@@ -418,15 +470,14 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             }
 
             GUIStyle activeBtnStyle = isListening ? _pttActiveStyle : _buttonStyle;
-            if (GUILayout.Button(btnText, activeBtnStyle, GUILayout.Width(width - 24f), GUILayout.Height(36f * scale)))
+            if (GUILayout.Button(btnText, activeBtnStyle, GUILayout.Width(width - 24f), GUILayout.Height(34f * scale)))
             {
                 starter.ToggleTapToSpeak();
             }
-            GUILayout.Space(3f);
+            GUILayout.Space(2f);
         }
 
-        // Live stage status summary
-        string permStatus = GetPermissionStatusText();
+        // High-signal 2-line compact status summary
         string wsStatus = GetWebSocketStatusText();
         string micStatus = GetMicrophoneStatusText();
         string toolCount = GetToolCountText();
@@ -435,28 +486,30 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             ? (starter != null && starter.IsListening
                 ? $"<color=#66BB6A>LISTENING ({starter.CurrentSpeechDuration:F1}s)</color>"
                 : "<color=#66BB6A>SPEAKING</color>")
-            : "Idle";
+            : "<color=#B0BEC5>Idle</color>";
+        string agentSpeakingLabel = _agentSpeaking ? "<color=#FFA726>SPEAKING</color>" : "<color=#B0BEC5>Idle</color>";
 
         GUILayout.Label(
-            $"<b>1. Mic Perm:</b> {permStatus}   |   <b>2. 24kHz Mic:</b> {micStatus}\n" +
-            $"<b>3. WebSocket:</b> {wsStatus}   |   <b>4. Tools:</b> {toolCount}\n" +
-            $"<b>5. Voice State:</b> User={userSpeakingLabel} | Agent={( _agentSpeaking ? "<color=#FFA726>SPEAKING</color>" : "Idle" )}",
+            $"<b>Relay:</b> {wsStatus}  |  <b>Mic:</b> {micStatus}  |  <b>Tools:</b> {toolCount}\n" +
+            $"<b>Voice:</b> User={userSpeakingLabel}  |  Agent={agentSpeakingLabel}",
             _statusStyle);
 
-        if (!string.IsNullOrEmpty(_lastUserTranscript))
-            GUILayout.Label($"<color=#B0BEC5><b>User (EN):</b> {_lastUserTranscript}</color>", _statusStyle);
-
-        if (!string.IsNullOrEmpty(_lastAgentTranscript))
+        // Single-line compact live conversation preview
+        if (!string.IsNullOrEmpty(_lastUserTranscript) || !string.IsNullOrEmpty(_lastAgentTranscript))
         {
-            string preview = _lastAgentTranscript.Length > 110
-                ? "..." + _lastAgentTranscript.Substring(_lastAgentTranscript.Length - 110)
-                : _lastAgentTranscript;
-            GUILayout.Label($"<color=#81D4FA><b>AI:</b> {preview}</color>", _statusStyle);
+            string userPart = !string.IsNullOrEmpty(_lastUserTranscript) ? $"<color=#B0BEC5><b>You:</b> \"{_lastUserTranscript}\"</color>" : "";
+            string aiPart = "";
+            if (!string.IsNullOrEmpty(_lastAgentTranscript))
+            {
+                string shortAi = _lastAgentTranscript.Length > 75 ? _lastAgentTranscript.Substring(_lastAgentTranscript.Length - 75) : _lastAgentTranscript;
+                aiPart = $"  <color=#81D4FA><b>AI:</b> \"{shortAi}\"</color>";
+            }
+            GUILayout.Label(userPart + aiPart, _statusStyle);
         }
 
-        GUILayout.Space(4f);
+        GUILayout.Space(2f);
 
-        // Scrollable event log
+        // Scrollable event log taking up maximum vertical space
         _scrollPos = GUILayout.BeginScrollView(_scrollPos);
         for (int i = 0; i < _logs.Count; i++)
         {
@@ -466,23 +519,13 @@ public class ConvoAIDebugOverlay : MonoBehaviour
                 LogType.Error => "#FF5252",
                 LogType.Exception => "#FF5252",
                 LogType.Warning => "#FFD54F",
-                _ => "#E0E0E0"
+                _ => "#ECEFF1"
             };
-            GUILayout.Label($"<color=#90A4AE>[{entry.Timestamp}]</color> <color={colorHex}>{entry.Message}</color>", _logStyle);
+            GUILayout.Label($"<color=#78909C>[{entry.Timestamp}]</color> <color={colorHex}>{entry.Message}</color>", _logStyle);
         }
         GUILayout.EndScrollView();
 
         GUILayout.EndArea();
-    }
-
-    private string GetPermissionStatusText()
-    {
-#if UNITY_ANDROID && !UNITY_EDITOR
-        bool granted = Permission.HasUserAuthorizedPermission(Permission.Microphone);
-        return granted ? "<color=#66BB6A>GRANTED</color>" : "<color=#FF5252>NOT GRANTED</color>";
-#else
-        return "<color=#66BB6A>READY</color>";
-#endif
     }
 
     private string GetWebSocketStatusText()
@@ -490,21 +533,32 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         if (_manager == null)
             return "<color=#FF5252>No Manager</color>";
 
+        if (_manager.IsDirectOpenAIFallback)
+            return "<color=#FFD54F>Direct OpenAI (Fallback)</color>";
+
         var ws = _wsField?.GetValue(_manager) as WebSocket;
-        bool sessionReady = _sessionReadyField != null && (bool)_sessionReadyField.GetValue(_manager);
+        bool sessionReady = _manager.IsSessionReady;
 
         if (ws == null)
-            return "<color=#FFD54F>Not Initialized</color>";
+            return "<color=#FFD54F>Connecting...</color>";
 
-        string stateColor = ws.State switch
+        if (ws.State != WebSocketState.Open)
         {
-            WebSocketState.Open => "#66BB6A",
-            WebSocketState.Connecting => "#FFD54F",
-            _ => "#FF5252"
-        };
+            string stateColor = ws.State switch
+            {
+                WebSocketState.Connecting => "#FFD54F",
+                _ => "#FF5252"
+            };
+            return $"<color={stateColor}>{ws.State}</color>";
+        }
 
-        string sessionStr = sessionReady ? " (Session Ready)" : " (Waiting Session)";
-        return $"<color={stateColor}>{ws.State}{sessionStr}</color>";
+        string target = (_manager.ActiveRelayUrl != null && _manager.ActiveRelayUrl.Contains("onrender.com"))
+            ? "Cloud (Render)"
+            : "Local (3101)";
+
+        return sessionReady
+            ? $"<color=#66BB6A>Connected ({target})</color>"
+            : $"<color=#FFD54F>Handshaking ({target})</color>";
     }
 
     private string GetMicrophoneStatusText()
@@ -512,31 +566,16 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         var starter = ConvoAIMicPermissionStarter.Instance;
         if (starter != null && starter.IsCapturing24k)
         {
-            bool recent = (Time.unscaledTime - starter.LastChunkSentTime) < 1.0f;
             if (starter.PushToTalkMode && !starter.IsListening)
-                return $"<color=#FFD54F>Tap-To-Speak Ready ({starter.SentChunksCount} pkts)</color>";
+                return "<color=#81D4FA>24kHz Ready (PTT)</color>";
 
+            bool recent = (Time.unscaledTime - starter.LastChunkSentTime) < 1.0f;
             return recent
-                ? $"<color=#66BB6A>Streaming 24kHz ({starter.SentChunksCount} pkts)</color>"
-                : $"<color=#FFD54F>Gated/Idle ({starter.SentChunksCount} pkts)</color>";
+                ? "<color=#66BB6A>24kHz Streaming</color>"
+                : "<color=#81D4FA>24kHz Gated</color>";
         }
 
-        if (_micStreamer == null)
-            return "<color=#FF5252>No Streamer</color>";
-
-        var dev = _micDeviceField?.GetValue(_micStreamer) as string;
-        var clip = _micClipField?.GetValue(_micStreamer) as AudioClip;
-        bool isRec = !string.IsNullOrEmpty(dev) && Microphone.IsRecording(dev);
-        bool recentChunk = (Time.unscaledTime - _lastMicChunkTime) < 1.0f;
-
-        if (isRec && clip != null)
-        {
-            return recentChunk
-                ? $"<color=#66BB6A>Streaming ({_micChunkCount} pkts)</color>"
-                : $"<color=#FFD54F>Rec ({_micChunkCount} pkts)</color>";
-        }
-
-        return "<color=#FFD54F>Waiting Session</color>";
+        return "<color=#FFD54F>Waiting</color>";
     }
 
     private static string GetToolCountText()
@@ -545,7 +584,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         {
             var specs = AgentToolRegistry.GetToolsSpec();
             int count = specs != null ? specs.Count : 0;
-            return count > 0 ? $"<color=#66BB6A>{count} bound</color>" : "<color=#FF5252>0 bound</color>";
+            return count > 0 ? $"<color=#66BB6A>{count} bound</color>" : "<color=#FF5252>0</color>";
         }
         catch
         {

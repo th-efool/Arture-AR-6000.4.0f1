@@ -8,6 +8,7 @@ namespace OpenAI
     {
         public string url;
         public string deviceUrl;
+        public string cloudUrl = "wss://arture-voice-relay.onrender.com/realtime";
         public string accessToken;
         public string assetCode;
         public string workerPhone;
@@ -40,6 +41,7 @@ namespace OpenAI
                     var supplied = JsonUtility.FromJson<ArtureRelaySettings>(local.text);
                     if (!string.IsNullOrWhiteSpace(supplied.url)) settings.url = supplied.url;
                     if (!string.IsNullOrWhiteSpace(supplied.deviceUrl)) settings.deviceUrl = supplied.deviceUrl;
+                    if (!string.IsNullOrWhiteSpace(supplied.cloudUrl)) settings.cloudUrl = supplied.cloudUrl;
                     if (!string.IsNullOrWhiteSpace(supplied.accessToken)) settings.accessToken = supplied.accessToken;
                     if (!string.IsNullOrWhiteSpace(supplied.assetCode)) settings.assetCode = supplied.assetCode;
                     if (!string.IsNullOrWhiteSpace(supplied.workerPhone)) settings.workerPhone = supplied.workerPhone;

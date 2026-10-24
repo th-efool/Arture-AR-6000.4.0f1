@@ -106,7 +106,7 @@ public static class MachineInteractionValidator
             float worldHeight = rt != null ? rt.sizeDelta.y * scale.y : 0f;
 
             AssertCheck("WorldSpaceUI Prefab Configuration",
-                uiCanvas != null && uiCanvas.renderMode == RenderMode.WorldSpace && uiText != null && worldWidth > 0.1f && worldWidth < 1.5f,
+                uiCanvas != null && uiCanvas.renderMode == RenderMode.WorldSpace && uiText != null && worldWidth > 0.1f && worldWidth < 3.0f,
                 $"renderMode={uiCanvas?.renderMode}, hasTMP={uiText != null}, worldSize=({worldWidth:F2}m x {worldHeight:F2}m)");
         }
 

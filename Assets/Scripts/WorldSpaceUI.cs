@@ -296,6 +296,14 @@ public class WorldSpaceUI : MonoBehaviour
         }
 
         WorldSpaceUI instance = Instantiate(prefab, position, Quaternion.identity, parent);
+        if (instance != null)
+        {
+            Vector3 s = instance.transform.localScale;
+            if (s.x < 0.0019f && s.x > 0f)
+            {
+                instance.transform.localScale = s * 2f;
+            }
+        }
         if (parent == null && targetScene.IsValid() && targetScene.isLoaded && instance.gameObject.scene != targetScene)
             SceneManager.MoveGameObjectToScene(instance.gameObject, targetScene);
         if (!instance.EnsureValidSetup())
