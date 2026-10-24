@@ -533,9 +533,6 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         if (_manager == null)
             return "<color=#FF5252>No Manager</color>";
 
-        if (_manager.IsDirectOpenAIFallback)
-            return "<color=#FFD54F>Direct OpenAI (Fallback)</color>";
-
         var ws = _wsField?.GetValue(_manager) as WebSocket;
         bool sessionReady = _manager.IsSessionReady;
 
@@ -552,9 +549,13 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             return $"<color={stateColor}>{ws.State}</color>";
         }
 
-        string target = (_manager.ActiveRelayUrl != null && _manager.ActiveRelayUrl.Contains("onrender.com"))
-            ? "Cloud (Render)"
-            : "Local (3101)";
+        string target = "OpenAI Direct";
+        if (_manager.ActiveRelayUrl != null)
+        {
+            if (_manager.ActiveRelayUrl.Contains("onrender.com")) target = "Cloud (Render)";
+            else if (_manager.ActiveRelayUrl.Contains("3101")) target = "Local (3101)";
+            else if (_manager.ActiveRelayUrl.Contains("openai.com")) target = "OpenAI Direct";
+        }
 
         return sessionReady
             ? $"<color=#66BB6A>Connected ({target})</color>"
