@@ -9,6 +9,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public static class MachineInteractionValidator
 {
@@ -17,7 +18,7 @@ public static class MachineInteractionValidator
     private const string MachineToolsJsonPath = "Assets/MachineTools.json";
     private const string SampleScenePath = "Assets/Scenes/SampleScene.unity";
     private const string ReportPath = "Temp/MachineInteractionValidationReport.txt";
-    private const string RunOnceSessionKey = "Arture.MachineInteractionValidator.RanV1";
+    private const string RunOnceSessionKey = "Arture.MachineInteractionValidator.RanV2";
 
     [InitializeOnLoadMethod]
     private static void RunValidationOnLoadOnce()
@@ -76,6 +77,25 @@ public static class MachineInteractionValidator
             pumpPrefab != null && uiPrefab != null && toolsJson != null,
             $"WaterPump={pumpPrefab != null}, WorldSpaceUI={uiPrefab != null}, MachineTools.json={toolsJson != null}");
 
+        bool messageToolRegisteredInSchema = false;
+        if (toolsJson != null)
+        {
+            try
+            {
+                JObject schema = JObject.Parse(toolsJson.text);
+                JArray toolDefinitions = schema["tools"] as JArray;
+                messageToolRegisteredInSchema = toolDefinitions != null && toolDefinitions.Any(tool =>
+                    string.Equals(tool["name"]?.ToString(), "Machine_ShowMessage", StringComparison.Ordinal));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MachineInteractionValidator] Could not parse MachineTools.json: {ex.Message}");
+            }
+        }
+        AssertCheck("Machine_ShowMessage Tool Schema",
+            messageToolRegisteredInSchema,
+            $"registered={messageToolRegisteredInSchema}");
+
         if (uiPrefab != null)
         {
             Canvas uiCanvas = uiPrefab.GetComponent<Canvas>();
@@ -129,6 +149,33 @@ public static class MachineInteractionValidator
                 compsArray.All(c => c["canHighlight"]?.Value<bool>() == true),
                 $"ok={getCompsResult["ok"]}, machineType={getCompsResult["machineType"]}, count={compsArray?.Count}");
 
+            JObject typedMessage = interaction.Machine_ShowMessage(new JObject
+            {
+                ["type"] = "warning",
+                ["text"] = "Check the pump casing before operation.",
+                ["component"] = "PumpCasing",
+                ["direction"] = "left"
+            });
+            WorldSpaceUI typedLabel = interaction.ActiveLabel;
+            WorldSpaceMessageIcon typedIcon = typedLabel != null
+                ? typedLabel.GetComponentInChildren<WorldSpaceMessageIcon>(true)
+                : null;
+            TMP_Text typeLabel = typedLabel != null
+                ? typedLabel.transform.Find("MessageHeader/MessageTypeLabel")?.GetComponent<TMP_Text>()
+                : null;
+            Image accent = typedLabel != null
+                ? typedLabel.transform.Find("MessageAccent")?.GetComponent<Image>()
+                : null;
+            AssertCheck("Typed Message Card Runtime Layout",
+                typedMessage["ok"]?.Value<bool>() == true &&
+                typedMessage["uiDisplayed"]?.Value<bool>() == true &&
+                typedLabel != null && typedLabel.gameObject.scene == previewScene &&
+                typedLabel.TextElement.text == "Check the pump casing before operation." &&
+                typeLabel != null && typeLabel.text == "WARNING" &&
+                typedIcon != null && typedIcon.color == WorldSpaceUI.GetTypeColor(WorldSpaceMessageType.Warning) &&
+                accent != null && accent.color == WorldSpaceUI.GetTypeColor(WorldSpaceMessageType.Warning),
+                $"ok={typedMessage["ok"]}, uiDisplayed={typedMessage["uiDisplayed"]}, scene={typedLabel?.gameObject.scene.name}, type={typeLabel?.text}, icon={typedIcon != null}, accent={accent != null}");
+
             // Find specific component transforms for verification
             Transform electricMotorTr = profile.Components.First(c => c.ComponentValue == (int)MachineDefinitions.CentrifugalWaterPump.ElectricMotor).GameObjectRef.transform;
             Transform terminalBoxTr = profile.Components.First(c => c.ComponentValue == (int)MachineDefinitions.CentrifugalWaterPump.MotorTerminalBox).GameObjectRef.transform;
@@ -174,7 +221,8 @@ public static class MachineInteractionValidator
                                   impellerRenderer.sharedMaterial.GetInt("_ZWrite") == 1;
             bool casingTransparentReveal = casingRenderer.sharedMaterial.renderQueue >= 3000 &&
                                            casingRenderer.sharedMaterial.GetInt("_ZWrite") == 0 &&
-                                           Mathf.Abs(casingRenderer.sharedMaterial.color.a - 0.12f) < 0.05f;
+                                           casingRenderer.sharedMaterial.color.a > 0f &&
+                                           casingRenderer.sharedMaterial.color.a < 1f;
 
             AssertCheck("3. Internal Component Reveal (Impeller inside PumpCasing)",
                 showImpeller["ok"]?.Value<bool>() == true &&

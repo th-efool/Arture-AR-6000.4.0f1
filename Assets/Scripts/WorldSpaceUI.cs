@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public enum WorldSpaceMessageType
@@ -285,7 +286,8 @@ public class WorldSpaceUI : MonoBehaviour
         string text,
         WorldSpaceMessageType type,
         string direction = "right",
-        Transform parent = null)
+        Transform parent = null,
+        Scene targetScene = default)
     {
         if (prefab == null)
         {
@@ -294,6 +296,8 @@ public class WorldSpaceUI : MonoBehaviour
         }
 
         WorldSpaceUI instance = Instantiate(prefab, position, Quaternion.identity, parent);
+        if (parent == null && targetScene.IsValid() && targetScene.isLoaded && instance.gameObject.scene != targetScene)
+            SceneManager.MoveGameObjectToScene(instance.gameObject, targetScene);
         if (!instance.EnsureValidSetup())
         {
             Destroy(instance.gameObject);

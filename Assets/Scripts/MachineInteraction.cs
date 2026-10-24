@@ -366,7 +366,8 @@ public class MachineInteraction : MonoBehaviour
                 labelPrefab,
                 GetLabelPosition(),
                 formattedLabel,
-                WorldSpaceMessageType.Info
+                WorldSpaceMessageType.Info,
+                targetScene: gameObject.scene
             );
 
             if (activeLabel == null)
@@ -475,7 +476,14 @@ public class MachineInteraction : MonoBehaviour
             uiError = $"WorldSpaceUI 'labelPrefab' is not assigned on MachineInteraction ('{name}').";
         else
         {
-            activeLabel = WorldSpaceUI.Spawn(labelPrefab, GetLabelPosition(), message, messageType, direction);
+            activeLabel = WorldSpaceUI.Spawn(
+                labelPrefab,
+                GetLabelPosition(),
+                message,
+                messageType,
+                direction,
+                targetScene: gameObject.scene
+            );
             if (activeLabel == null)
                 uiError = "Failed to instantiate or configure the WorldSpaceUI message card.";
         }
