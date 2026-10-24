@@ -27,6 +27,10 @@ public class MachineInteraction : MonoBehaviour
     [Header("Reveal Internal Components")]
     [SerializeField] [Range(0.02f, 0.5f)] private float unselectedOpacity = 0.27f;
 
+    [Header("Auto Reset")]
+    [Tooltip("Seconds after an answer is shown before the highlight resets automatically. 0 = never.")]
+    [SerializeField] [Min(0f)] private float autoClearSeconds = 12f;
+
     [Header("Conversation Integration")]
     [SerializeField] private RealtimeConversationManager conversationManager;
 
@@ -956,6 +960,8 @@ public class MachineInteraction : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (autoClearSeconds > 0f && selectedObject != null && Time.unscaledTime - lastAnswerShownUnscaledTime > autoClearSeconds)
+            ClearAnswer();
         UpdateLabel();
     }
 

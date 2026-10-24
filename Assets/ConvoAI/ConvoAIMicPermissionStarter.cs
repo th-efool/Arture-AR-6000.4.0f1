@@ -330,6 +330,7 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         _speechSamplesRecorded = 0;
 
         _conversationManager?.InterruptNow();
+        _conversationManager?.onUserSpeaking?.Invoke(true);
 
         if (_micClip24k != null && !string.IsNullOrEmpty(_micDevice))
         {
