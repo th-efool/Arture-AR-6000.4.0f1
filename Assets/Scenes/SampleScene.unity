@@ -8664,6 +8664,7 @@ MonoBehaviour:
   bloomGlowIntensity: 1.35
   focusShader: {fileID: 4800000, guid: a1b2c3d4e5f6478990123456789abcde, type: 3}
   unselectedOpacity: 0.27
+  autoClearSeconds: 12
   conversationManager: {fileID: 866926738527293302}
 --- !u!1001 &5214591598045136834
 PrefabInstance:
@@ -8921,15 +8922,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3564914339968251930, guid: 16c40df1b86298443993a6641133e717, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0.17015612
+      value: 0.21
       objectReference: {fileID: 0}
     - target: {fileID: 3564914339968251930, guid: 16c40df1b86298443993a6641133e717, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: -1.04
       objectReference: {fileID: 0}
     - target: {fileID: 3564914339968251930, guid: 16c40df1b86298443993a6641133e717, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 3.3498402
+      value: 5.01
       objectReference: {fileID: 0}
     - target: {fileID: 3564914339968251930, guid: 16c40df1b86298443993a6641133e717, type: 3}
       propertyPath: m_LocalRotation.w

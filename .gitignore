@@ -110,5 +110,8 @@ InitTestScene*.unity*
 graphify-out/
 
 Assets/Resources/OpenAIConfig.asset
-Assets/Resources/OpenAIConfig.asset
-Assets/Resources/OpenAIConfig.asset
+
+# Local Arture app credential; OpenAI credentials belong only on the backend.
+Assets/Resources/ArtureRelayConnection.json
+Assets/Resources/ArtureRelayConnection.json.meta
+.arture-*/

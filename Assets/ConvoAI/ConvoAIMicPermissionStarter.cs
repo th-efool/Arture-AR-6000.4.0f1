@@ -217,6 +217,12 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         bool sessionReady = _sessionReadyField != null && (bool)_sessionReadyField.GetValue(_conversationManager);
         if (!sessionReady)
         {
+            if (_customSessionConfigured && !string.IsNullOrEmpty(_micDevice))
+            {
+                Microphone.End(_micDevice);
+                _micClip24k = null;
+                _isHoldingTalk = false;
+            }
             _customSessionConfigured = false;
             return;
         }
@@ -269,6 +275,7 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         }
 
         _micDevice = Microphone.devices[0];
+        if (Microphone.IsRecording(_micDevice)) Microphone.End(_micDevice);
         // Use a 10-second ring buffer so wrap-around edge cases never cause lag or lost speech
         _micClip24k = Microphone.Start(_micDevice, true, 10, OpenAISampleRate);
         if (_micClip24k != null)
@@ -367,7 +374,7 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         _responseCreateSentField?.SetValue(_conversationManager, false);
 
         SendWebSocketJson("{\"type\":\"input_audio_buffer.commit\"}");
-        SendWebSocketJson("{\"type\":\"response.create\"}");
+        _conversationManager.RequestResponse();
         Debug.Log($"[ConvoAI] Tap to speak finished ({duration:F1}s, {_speechSamplesRecorded} samples): Committed & AI response requested.");
     }
 

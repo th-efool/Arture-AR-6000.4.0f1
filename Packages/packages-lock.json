@@ -1,13 +1,12 @@
 {
   "dependencies": {
     "com.convai.openai": {
-      "version": "https://github.com/HattMarris1/Unity-QuestConversationalAI.git?path=/com.convai.openai",
+      "version": "file:com.convai.openai",
       "depth": 0,
-      "source": "git",
+      "source": "embedded",
       "dependencies": {
         "com.unity.nuget.newtonsoft-json": "3.0.0"
-      },
-      "hash": "5bba131002a66e6da25b96da94a4fe92b610a4c5"
+      }
     },
     "com.endel.nativewebsocket": {
       "version": "https://github.com/endel/NativeWebSocket.git#upm",

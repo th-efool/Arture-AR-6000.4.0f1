@@ -7938,8 +7938,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fc100347e3ca30a4da4b437404ac20e1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MachineProfile
-  MachineID: 1
-  Name: Water Pump Test
+  MachineID: ATR-DEMO-PUMP-001
+  Name: Centrifugal Water Pump
   MachineType: 0
   Components:
   - componentValue: 0
