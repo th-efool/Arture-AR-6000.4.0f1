@@ -25,7 +25,7 @@ public class MachineInteraction : MonoBehaviour
     [SerializeField] private Shader focusShader;
 
     [Header("Reveal Internal Components")]
-    [SerializeField] [Range(0.02f, 0.5f)] private float unselectedOpacity = 0.12f;
+    [SerializeField] [Range(0.02f, 0.5f)] private float unselectedOpacity = 0.27f;
 
     [Header("Conversation Integration")]
     [SerializeField] private RealtimeConversationManager conversationManager;
