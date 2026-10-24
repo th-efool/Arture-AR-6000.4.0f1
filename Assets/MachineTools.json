@@ -13,17 +13,17 @@
     {
       "type": "function",
       "name": "Machine_ShowAnswer",
-      "description": "Highlight one machine component and display an answer above it. Call for every component question, including follow-up questions. The previous highlight and label are replaced. Use an exact component name returned by Machine_GetComponents.",
+      "description": "Highlight one machine component and display an answer label above it. Call for every component question, including follow-up questions about the same or another component. The previous highlight and label are replaced automatically. Use an exact component identifier returned by Machine_GetComponents. Check the returned highlighted, uiDisplayed, highlightError, and uiError fields before claiming the highlight or label succeeded.",
       "parameters": {
         "type": "object",
         "properties": {
           "component": {
             "type": "string",
-            "description": "Exact component identifier, for example PumpCasing or ElectricMotor."
+            "description": "Exact component identifier returned by Machine_GetComponents, for example Impeller, PumpCasing, or ElectricMotor."
           },
           "answer": {
             "type": "string",
-            "description": "A short plain-text answer to the user's current question, grounded in the component description."
+            "description": "A concise plain-text answer to the user's current question, grounded in the component description."
           }
         },
         "required": ["component", "answer"],

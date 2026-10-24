@@ -104,10 +104,13 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         bool isRelevant =
             condition.IndexOf("[OpenAI]", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("[ConvoAI]", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("[MachineInteraction]", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("[WorldSpaceUI]", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("[MicrophoneStreamer]", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("MicrophoneStreamer", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("[TestTools]", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("ToolBindings", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.IndexOf("Machine_", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("Cube_", StringComparison.OrdinalIgnoreCase) >= 0 ||
             type == LogType.Error ||
             type == LogType.Exception;

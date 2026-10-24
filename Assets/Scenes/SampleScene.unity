@@ -8474,11 +8474,50 @@ PrefabInstance:
       propertyPath: thinkingAudioSource
       value: 
       objectReference: {fileID: 748842679}
+    - target: {fileID: 4835223742659108802, guid: 4c1414d40bc871744ad7189cb64f6c60, type: 3}
+      propertyPath: onUserSpeaking.m_PersistentCalls.m_Calls.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4835223742659108802, guid: 4c1414d40bc871744ad7189cb64f6c60, type: 3}
+      propertyPath: onUserSpeaking.m_PersistentCalls.m_Calls.Array.data[0].m_Target
+      value: 
+      objectReference: {fileID: 919132148098005521}
+    - target: {fileID: 4835223742659108802, guid: 4c1414d40bc871744ad7189cb64f6c60, type: 3}
+      propertyPath: onUserSpeaking.m_PersistentCalls.m_Calls.Array.data[0].m_TargetAssemblyTypeName
+      value: MachineInteraction, Assembly-CSharp
+      objectReference: {fileID: 0}
+    - target: {fileID: 4835223742659108802, guid: 4c1414d40bc871744ad7189cb64f6c60, type: 3}
+      propertyPath: onUserSpeaking.m_PersistentCalls.m_Calls.Array.data[0].m_MethodName
+      value: OnUserSpeaking
+      objectReference: {fileID: 0}
+    - target: {fileID: 4835223742659108802, guid: 4c1414d40bc871744ad7189cb64f6c60, type: 3}
+      propertyPath: onUserSpeaking.m_PersistentCalls.m_Calls.Array.data[0].m_Mode
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4835223742659108802, guid: 4c1414d40bc871744ad7189cb64f6c60, type: 3}
+      propertyPath: onUserSpeaking.m_PersistentCalls.m_Calls.Array.data[0].m_Arguments.m_ObjectArgumentAssemblyTypeName
+      value: UnityEngine.Object, UnityEngine
+      objectReference: {fileID: 0}
+    - target: {fileID: 4835223742659108802, guid: 4c1414d40bc871744ad7189cb64f6c60, type: 3}
+      propertyPath: onUserSpeaking.m_PersistentCalls.m_Calls.Array.data[0].m_CallState
+      value: 2
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 4c1414d40bc871744ad7189cb64f6c60, type: 3}
+--- !u!114 &866926738527293302 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 4835223742659108802, guid: 4c1414d40bc871744ad7189cb64f6c60, type: 3}
+  m_PrefabInstance: {fileID: 866926738527293301}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0a3b7f08c1e624d1f924197508fff457, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1001 &891726464977617767
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8613,6 +8652,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7df94388d384da54bbb80f5b4b351155, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MachineInteraction
+  labelPrefab: {fileID: 8940360141628855378, guid: c886f9790c5fb3a41a1618135cdaf477, type: 3}
+  viewerCamera: {fileID: 0}
+  labelHeight: 0.08
+  highlightColor: {r: 1, g: 0.85, b: 0.1, a: 1}
+  outlineWidthPixels: 4.5
+  bloomGlowIntensity: 1.35
+  focusShader: {fileID: 4800000, guid: a1b2c3d4e5f6478990123456789abcde, type: 3}
+  unselectedOpacity: 0.12
+  conversationManager: {fileID: 866926738527293302}
 --- !u!1001 &5214591598045136834
 PrefabInstance:
   m_ObjectHideFlags: 0

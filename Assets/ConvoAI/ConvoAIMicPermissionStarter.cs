@@ -379,14 +379,27 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         if (ws == null || ws.State != WebSocketState.Open)
             return;
 
-        string basePrompt = _systemPromptField?.GetValue(_conversationManager) as string
-                            ?? "You are an interactive AR assistant controlling a magical 3D cube. Be extremely concise. Keep spoken replies to 1-5 words or at most one short sentence unless the user explicitly asks for an explanation or longer detail.";
+        // Ensure ToolBindings has registered its tools before sending session.update
+        var toolBindings = FindAnyObjectByType<ToolBindings>();
+        if (toolBindings != null && AgentToolRegistry.GetToolsSpec().Count == 0)
+        {
+            toolBindings.RegisterAll();
+        }
+
+        string basePrompt = _systemPromptField?.GetValue(_conversationManager) as string;
+        if (string.IsNullOrWhiteSpace(basePrompt) || basePrompt.IndexOf("magical 3D cube", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            basePrompt = "You are an interactive AR engineering assistant inspecting a 3D industrial machine.";
+        }
+
         string enhancedInstructions =
             basePrompt.Trim() +
             "\nCRITICAL RULES:" +
-            "\n1. Be extremely brief. Speak only 1 to 5 words or at most a single short sentence (e.g. 'Spinning now', 'Color changed', 'Jumping!', 'Hovering', 'Pulsing', 'Rainbow mode!', 'Reset done') unless the user explicitly demands a long answer or detailed explanation." +
-            "\n2. When asked to control the cube (spin, stop, speed, color, opacity, resize, jump, float, pulse, rainbow, reset), trigger the tool immediately without unnecessary commentary." +
-            "\n3. Always listen and speak strictly in English. Ignore background noise and non-English phonetic artifacts.";
+            "\n1. Before answering questions about the machine or its parts, call Machine_GetComponents to read the real component identifiers, descriptions, and assigned status. Ground all machine-specific answers in the returned data." +
+            "\n2. Whenever the user asks about a component or asks a follow-up question about a component, ALWAYS call Machine_ShowAnswer using the exact component identifier returned by Machine_GetComponents (e.g., Impeller, PumpCasing, ElectricMotor) and a clear, concise plain-text answer." +
+            "\n3. Inspect the Machine_ShowAnswer tool response before speaking: check 'highlighted' and 'uiDisplayed'. Never claim the component was highlighted or the label was shown if the corresponding flag is false; if one failed, explain whether the highlight or the UI label had an issue using 'highlightError' or 'uiError'." +
+            "\n4. When asked to resize/scale, rotate, or move/translate the machine, call Machine_SetScale, Machine_Rotate, or Machine_Translate immediately." +
+            "\n5. Speak clearly and concisely in English (1-2 short sentences) to explain the answer aloud while the component is highlighted.";
 
         string voiceStr = _resolveVoiceMethod?.Invoke(_conversationManager, null) as string ?? "alloy";
 
@@ -421,7 +434,7 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
                     {
                         ["model"] = _transcribeModel,
                         ["language"] = "en",
-                        ["prompt"] = "Spin cube, stop spinning, set speed, random color, increase opacity, decrease opacity, set scale, jump, float, pulse, rainbow mode, reset cube."
+                        ["prompt"] = "What does the impeller do, electric motor, motor terminal box, cooling fan cover, shaft coupling, coupling guard, pump casing, pump shaft, bearing housing, suction flange, discharge flange, baseplate, pump mounting foot, mounting bolt, scale, rotate, move, translate."
                     },
                     ["turn_detection"] = turnDetectionToken
                 },
