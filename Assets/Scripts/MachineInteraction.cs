@@ -361,11 +361,12 @@ public class MachineInteraction : MonoBehaviour
         }
         else
         {
-            string formattedLabel = $"<b>{FormatDisplayName(selectedName)}</b>\n{answer}";
+            string formattedLabel = $"{FormatDisplayName(selectedName)}\n{answer}";
             activeLabel = WorldSpaceUI.Spawn(
                 labelPrefab,
                 GetLabelPosition(),
-                formattedLabel
+                formattedLabel,
+                WorldSpaceMessageType.Info
             );
 
             if (activeLabel == null)
@@ -411,6 +412,84 @@ public class MachineInteraction : MonoBehaviour
             response["error"] = highlightError ?? uiError ?? "Both component highlighting and answer UI failed.";
 
         return response;
+    }
+
+    // Shows a typed, consistently styled message. An optional component anchors the card
+    // above that component; component Q&A should use Machine_ShowAnswer to add highlighting.
+    [Preserve]
+    public JObject Machine_ShowMessage(JObject args)
+    {
+        if (!isActiveAndEnabled)
+            return Error("Machine interaction is disabled.");
+
+        string typeName = args?.Value<string>("type");
+        if (!WorldSpaceUI.TryParseMessageType(typeName, out WorldSpaceMessageType messageType))
+            return Error("A valid message type is required: info, point_arrow, turn_arrow, alert, or warning.");
+
+        string message = args?.Value<string>("text")?.Trim();
+        if (string.IsNullOrWhiteSpace(message))
+            return Error("Message text is required.");
+
+        string direction = args?.Value<string>("direction")?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(direction))
+            direction = "right";
+        if (direction != "left" && direction != "right" && direction != "up" &&
+            direction != "down" && direction != "forward")
+            return Error("Direction must be left, right, up, down, or forward.");
+
+        GameObject target = null;
+        string componentName = args?.Value<string>("component")?.Trim();
+        if (!string.IsNullOrWhiteSpace(componentName))
+        {
+            if (profile == null)
+                profile = GetComponent<MachineProfile>();
+            if (profile == null || !Enum.IsDefined(typeof(MachineType), profile.MachineType))
+                return Error("A valid MachineProfile is required to resolve the component.");
+
+            Type enumType;
+            try
+            {
+                enumType = MachineDefinitions.GetComponentEnumType(profile.MachineType);
+            }
+            catch (Exception ex)
+            {
+                return Error($"Could not resolve this machine's components: {ex.Message}");
+            }
+
+            MachineComponent component = FindMatchingComponent(componentName, enumType, out componentName);
+            if (component == null)
+                return Error($"Unknown component '{componentName}'. Call Machine_GetComponents and use an exact component name.");
+            target = component.GameObjectRef;
+            if (target == null || !target.activeInHierarchy)
+                return Error($"Component '{componentName}' has no active GameObject reference.");
+        }
+
+        ClearAnswer();
+        selectedObject = target != null ? target : gameObject;
+        selectedRenderers = ResolveComponentRenderers(selectedObject);
+        if (selectedRenderers.Length == 0)
+            selectedRenderers = GetComponentsInChildren<Renderer>(true);
+
+        string uiError = null;
+        if (labelPrefab == null)
+            uiError = $"WorldSpaceUI 'labelPrefab' is not assigned on MachineInteraction ('{name}').";
+        else
+        {
+            activeLabel = WorldSpaceUI.Spawn(labelPrefab, GetLabelPosition(), message, messageType, direction);
+            if (activeLabel == null)
+                uiError = "Failed to instantiate or configure the WorldSpaceUI message card.";
+        }
+
+        lastAnswerShownUnscaledTime = Time.unscaledTime;
+        bool displayed = activeLabel != null;
+        return new JObject
+        {
+            ["ok"] = displayed,
+            ["messageType"] = typeName,
+            ["component"] = componentName ?? string.Empty,
+            ["uiDisplayed"] = displayed,
+            ["uiError"] = uiError ?? string.Empty
+        };
     }
 
     private MachineComponent FindMatchingComponent(string requestedName, Type enumType, out string canonicalName)
@@ -939,6 +1018,12 @@ public class MachineInteraction : MonoBehaviour
         // Also compute overall machine top Y so labels for internal components (like Impeller)
         // are placed above the machine silhouette and never buried inside the machine mesh.
         float machineTopY = componentBounds.max.y;
+        // Include the whole machine even when no highlight has been applied (typed messages).
+        foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
+        {
+            if (renderer != null && renderer.gameObject.activeInHierarchy)
+                machineTopY = Mathf.Max(machineTopY, renderer.bounds.max.y);
+        }
         foreach (RendererState state in rendererStates)
         {
             if (state.Renderer != null)

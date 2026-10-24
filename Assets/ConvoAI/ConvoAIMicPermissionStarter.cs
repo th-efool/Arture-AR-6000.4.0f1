@@ -406,8 +406,10 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             "\n1. Before answering questions about the machine or its parts, call Machine_GetComponents to read the real component identifiers, descriptions, and assigned status. Ground all machine-specific answers in the returned data." +
             "\n2. Whenever the user asks about a component or asks a follow-up question about a component, ALWAYS call Machine_ShowAnswer using the exact component identifier returned by Machine_GetComponents (e.g., Impeller, PumpCasing, ElectricMotor) and a clear, concise plain-text answer." +
             "\n3. Inspect the Machine_ShowAnswer tool response before speaking: check 'highlighted' and 'uiDisplayed'. Never claim the component was highlighted or the label was shown if the corresponding flag is false; if one failed, explain whether the highlight or the UI label had an issue using 'highlightError' or 'uiError'." +
-            "\n4. When asked to resize/scale, rotate, or move/translate the machine, call Machine_SetScale, Machine_Rotate, or Machine_Translate immediately." +
-            "\n5. Speak clearly and concisely in English (1-2 short sentences) to explain the answer aloud while the component is highlighted.";
+            "\n4. For a standalone warning, alert, or spatial direction that does not require component highlighting, call Machine_ShowMessage with the matching type and concise text. Include an exact component identifier only when the card should be placed above that component. For component Q&A, always use Machine_ShowAnswer instead." +
+            "\n5. Inspect Machine_ShowMessage's 'uiDisplayed' and 'uiError' fields before claiming its card appeared." +
+            "\n6. When asked to resize/scale, rotate, or move/translate the machine, call Machine_SetScale, Machine_Rotate, or Machine_Translate immediately." +
+            "\n7. Speak clearly and concisely in English (1-2 short sentences) to explain the answer aloud while the component is highlighted.";
 
         string voiceStr = _resolveVoiceMethod?.Invoke(_conversationManager, null) as string ?? "alloy";
 

@@ -32,6 +32,36 @@
     },
     {
       "type": "function",
+      "name": "Machine_ShowMessage",
+      "description": "Display a typed spatial message on the machine using the shared icon, color, header, and text card. Use this for alerts, warnings, information, or directional guidance. For component questions that require highlighting, use Machine_ShowAnswer instead. The previous message and highlight are replaced automatically. Check uiDisplayed and uiError before claiming the card appeared.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["info", "point_arrow", "turn_arrow", "alert", "warning"],
+            "description": "Visual message type. Use point_arrow or turn_arrow only when spatial direction is useful."
+          },
+          "text": {
+            "type": "string",
+            "description": "Short, plain-text message to display."
+          },
+          "component": {
+            "type": "string",
+            "description": "Optional exact component identifier from Machine_GetComponents; places the card above that component."
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["left", "right", "up", "down", "forward"],
+            "description": "Optional direction for the point or turn arrow icon. Defaults to right."
+          }
+        },
+        "required": ["type", "text"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "function",
       "name": "Machine_SetScale",
       "description": "Increase or decrease the machine's size by multiplying its current scale. Use multiplier above 1 to enlarge and below 1 to reduce.",
       "parameters": {
