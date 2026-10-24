@@ -11,41 +11,75 @@ namespace OpenAI
         public string accessToken;
         public string assetCode;
         public string workerPhone;
+        public string openAIApiKey;
+        public string directOpenAIUrl = "wss://api.openai.com/v1/realtime";
+        public bool isDirectOpenAI;
 
         public static ArtureRelaySettings Load(OpenAIConfig config)
         {
             var settings = new ArtureRelaySettings
             {
-                url = config != null ? config.relayWebsocketUrl : "ws://127.0.0.1:3101/realtime",
+                url = config != null && !string.IsNullOrWhiteSpace(config.relayWebsocketUrl)
+                    ? config.relayWebsocketUrl
+                    : "wss://arture-voice-relay.onrender.com/realtime",
                 accessToken = config != null ? config.relayAccessToken : "",
-                assetCode = config != null ? config.assetCode : "ATR-DEMO-PUMP-001"
+                assetCode = config != null && !string.IsNullOrWhiteSpace(config.assetCode)
+                    ? config.assetCode
+                    : "ATR-DEMO-PUMP-001",
+                openAIApiKey = config != null ? config.fallbackOpenAIApiKey : "",
+                directOpenAIUrl = config != null && !string.IsNullOrWhiteSpace(config.directOpenAIWebsocketUrl)
+                    ? config.directOpenAIWebsocketUrl
+                    : "wss://api.openai.com/v1/realtime"
             };
+
             var local = Resources.Load<TextAsset>("ArtureRelayConnection");
             if (local != null)
             {
-                var supplied = JsonUtility.FromJson<ArtureRelaySettings>(local.text);
-                if (!string.IsNullOrWhiteSpace(supplied.url)) settings.url = supplied.url;
-                if (!string.IsNullOrWhiteSpace(supplied.deviceUrl)) settings.deviceUrl = supplied.deviceUrl;
-                if (!string.IsNullOrWhiteSpace(supplied.accessToken)) settings.accessToken = supplied.accessToken;
-                if (!string.IsNullOrWhiteSpace(supplied.assetCode)) settings.assetCode = supplied.assetCode;
-                if (!string.IsNullOrWhiteSpace(supplied.workerPhone)) settings.workerPhone = supplied.workerPhone;
+                try
+                {
+                    var supplied = JsonUtility.FromJson<ArtureRelaySettings>(local.text);
+                    if (!string.IsNullOrWhiteSpace(supplied.url)) settings.url = supplied.url;
+                    if (!string.IsNullOrWhiteSpace(supplied.deviceUrl)) settings.deviceUrl = supplied.deviceUrl;
+                    if (!string.IsNullOrWhiteSpace(supplied.accessToken)) settings.accessToken = supplied.accessToken;
+                    if (!string.IsNullOrWhiteSpace(supplied.assetCode)) settings.assetCode = supplied.assetCode;
+                    if (!string.IsNullOrWhiteSpace(supplied.workerPhone)) settings.workerPhone = supplied.workerPhone;
+                    if (!string.IsNullOrWhiteSpace(supplied.openAIApiKey)) settings.openAIApiKey = supplied.openAIApiKey;
+                    if (!string.IsNullOrWhiteSpace(supplied.directOpenAIUrl)) settings.directOpenAIUrl = supplied.directOpenAIUrl;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[Arture] Failed parsing ArtureRelayConnection.json: {ex.Message}");
+                }
             }
+
             if (Application.isMobilePlatform && !Application.isEditor && !string.IsNullOrWhiteSpace(settings.deviceUrl))
                 settings.url = settings.deviceUrl;
+
 #if UNITY_EDITOR
             var editorUrl = Environment.GetEnvironmentVariable("ARTURE_RELAY_URL");
             var editorToken = Environment.GetEnvironmentVariable("ARTURE_RELAY_ACCESS_KEY");
+            var editorOpenAiKey = Environment.GetEnvironmentVariable("ARTURE_OPENAI_API_KEY") ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
             if (!string.IsNullOrWhiteSpace(editorUrl)) settings.url = editorUrl;
             if (!string.IsNullOrWhiteSpace(editorToken)) settings.accessToken = editorToken;
+            if (!string.IsNullOrWhiteSpace(editorOpenAiKey)) settings.openAIApiKey = editorOpenAiKey;
 #endif
-            if (!Uri.TryCreate(settings.url, UriKind.Absolute, out var uri) || (uri.Scheme != "ws" && uri.Scheme != "wss"))
-                throw new InvalidOperationException("Configure an Arture ws:// or wss:// relay URL.");
-            if (uri.Host.EndsWith("openai.com", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Unity must connect to the Arture relay, not directly to OpenAI.");
-            if (string.IsNullOrWhiteSpace(settings.accessToken) || settings.accessToken.Length < 24 || settings.accessToken.StartsWith("sk-"))
-                throw new InvalidOperationException("Configure an Arture app credential. Do not put an OpenAI API key in Unity.");
-            if (string.IsNullOrWhiteSpace(settings.assetCode))
-                throw new InvalidOperationException("Configure the machine asset code.");
+
+            // Check if user pointed primary URL directly to OpenAI
+            if (Uri.TryCreate(settings.url, UriKind.Absolute, out var uri) && uri.Host.EndsWith("openai.com", StringComparison.OrdinalIgnoreCase))
+            {
+                settings.isDirectOpenAI = true;
+                if (string.IsNullOrWhiteSpace(settings.openAIApiKey) && !string.IsNullOrWhiteSpace(settings.accessToken) && settings.accessToken.StartsWith("sk-"))
+                {
+                    settings.openAIApiKey = settings.accessToken;
+                }
+            }
+
+            // If accessToken is an OpenAI key and openAIApiKey was not explicitly supplied, assign it
+            if (string.IsNullOrWhiteSpace(settings.openAIApiKey) && !string.IsNullOrWhiteSpace(settings.accessToken) && settings.accessToken.StartsWith("sk-"))
+            {
+                settings.openAIApiKey = settings.accessToken;
+            }
+
             return settings;
         }
     }

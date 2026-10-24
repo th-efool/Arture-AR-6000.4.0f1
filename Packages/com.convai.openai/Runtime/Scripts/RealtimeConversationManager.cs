@@ -78,6 +78,8 @@ namespace OpenAI
         private int _turnGeneration;
         private bool _terminalRelayError;
         private string _workerPhone;
+        private bool _isDirectOpenAIFallback;
+        private ArtureRelaySettings _activeSettings;
         public string WorkerName { get; private set; } = "Unassigned";
         public string KnowledgeStatus { get; private set; } = "idle";
         public string KnowledgeSourcesSummary { get; private set; } = string.Empty;
@@ -134,8 +136,16 @@ namespace OpenAI
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[Arture] Relay connection failed ({ex.GetType().Name}). Check backend URL and app credential.");
+                Debug.LogError($"[Arture] Connection attempt failed ({ex.GetType().Name}): {ex.Message}");
                 _ws = null;
+                if (!_isDirectOpenAIFallback && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
+                {
+                    Debug.LogWarning("[Arture] Backend relay unreachable. Automatically falling back directly to OpenAI Realtime API...");
+                    _isDirectOpenAIFallback = true;
+                    _starting = false;
+                    StartAgent();
+                    return;
+                }
                 ScheduleReconnect();
             }
             finally { _starting = false; }
@@ -344,6 +354,33 @@ namespace OpenAI
 
         private void SendSessionUpdate()
         {
+            if (_isDirectOpenAIFallback || (_activeSettings != null && _activeSettings.isDirectOpenAI))
+            {
+                var enrichedPrompt = systemPrompt ?? string.Empty;
+                if (!enrichedPrompt.Contains("Centrifugal Water Pump"))
+                {
+                    enrichedPrompt += "\nYou are the Arture AR assistant for the Centrifugal Water Pump (asset ATR-DEMO-PUMP-001). Guide the technician through maintenance, troubleshooting, and inspection. Use the available AR tools (Machine_HighlightComponent, Machine_ShowAnswer, Machine_ExplodeView, Machine_RotatePump) to visually illuminate and manipulate pump components in augmented reality whenever explaining them.";
+                }
+
+                var directSession = new JObject
+                {
+                    ["instructions"] = enrichedPrompt,
+                    ["modalities"]   = new JArray("text", "audio"),
+                    ["voice"]        = ResolveVoiceString(),
+                    ["input_audio_transcription"] = new JObject { ["model"] = "gpt-4o-mini-transcribe" },
+                    ["turn_detection"] = new JObject
+                    {
+                        ["type"] = "server_vad",
+                        ["create_response"] = false
+                    },
+                    ["tools"] = AgentToolRegistry.GetToolsSpec()
+                };
+
+                var directUpd = new JObject { ["type"] = "session.update", ["session"] = directSession };
+                _ = _ws.SendText(directUpd.ToString(Formatting.None));
+                return;
+            }
+
             // server VAD on, but we create responses ourselves at speech stop
             var session = new JObject
             {
@@ -601,14 +638,43 @@ namespace OpenAI
 
         private void InitializeWebSocket()
         {
-            var settings = ArtureRelaySettings.Load(config);
-            if (!string.IsNullOrWhiteSpace(settings.workerPhone)) _workerPhone = settings.workerPhone;
-            var separator = settings.url.Contains("?") ? "&" : "?";
-            var url = $"{settings.url}{separator}assetCode={Uri.EscapeDataString(settings.assetCode)}";
-            var headers = new Dictionary<string, string>
+            _activeSettings = ArtureRelaySettings.Load(config);
+            if (!string.IsNullOrWhiteSpace(_activeSettings.workerPhone)) _workerPhone = _activeSettings.workerPhone;
+
+            string url;
+            Dictionary<string, string> headers;
+
+            if (_isDirectOpenAIFallback || _activeSettings.isDirectOpenAI)
             {
-                { "Authorization", $"Bearer {settings.accessToken}" }
-            };
+                var directUrl = !string.IsNullOrWhiteSpace(_activeSettings.directOpenAIUrl)
+                    ? _activeSettings.directOpenAIUrl
+                    : "wss://api.openai.com/v1/realtime";
+                var separator = directUrl.Contains("?") ? "&" : "?";
+                url = $"{directUrl}{separator}model={Uri.EscapeDataString(model)}";
+
+                var key = !string.IsNullOrWhiteSpace(_activeSettings.openAIApiKey)
+                    ? _activeSettings.openAIApiKey
+                    : _activeSettings.accessToken;
+
+                headers = new Dictionary<string, string>
+                {
+                    { "Authorization", $"Bearer {key}" },
+                    { "OpenAI-Beta", "realtime=v1" }
+                };
+                Debug.Log($"[Arture] Connecting directly to OpenAI Realtime: {directUrl} (Model: {model})");
+                onKnowledgeStatus?.Invoke("direct_openai");
+            }
+            else
+            {
+                var separator = _activeSettings.url.Contains("?") ? "&" : "?";
+                url = $"{_activeSettings.url}{separator}assetCode={Uri.EscapeDataString(_activeSettings.assetCode)}";
+                headers = new Dictionary<string, string>
+                {
+                    { "Authorization", $"Bearer {_activeSettings.accessToken}" }
+                };
+                Debug.Log($"[Arture] Connecting to Arture Voice Relay: {_activeSettings.url} (Asset: {_activeSettings.assetCode})");
+            }
+
             _ws = new WebSocket(url, headers);
         }
 
@@ -618,10 +684,17 @@ namespace OpenAI
             socket.OnOpen += () =>
             {
                 WorkerName = "Unassigned";
-                KnowledgeStatus = "idle";
+                KnowledgeStatus = _isDirectOpenAIFallback ? "direct_openai" : "idle";
                 KnowledgeSourcesSummary = string.Empty;
-                IdentifyWorker(_workerPhone);
-                Debug.Log("[Arture] Relay socket open; waiting for voice session setup.");
+                if (!_isDirectOpenAIFallback)
+                {
+                    IdentifyWorker(_workerPhone);
+                    Debug.Log("[Arture] Relay socket open; waiting for voice session setup.");
+                }
+                else
+                {
+                    Debug.Log("[Arture] Direct OpenAI socket open; waiting for voice session setup.");
+                }
             };
             socket.OnClose += code =>
             {
@@ -631,10 +704,30 @@ namespace OpenAI
                 StopThinkingSfx(true);
                 _agentCurrentlySpeaking = false;
                 onAgentSpeaking?.Invoke(false);
+
+                // If relay closed before session ready and we have OpenAI key, switch to fallback
+                if (!_sessionReady && !_isDirectOpenAIFallback && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
+                {
+                    Debug.LogWarning("[Arture] Relay closed before session ready. Falling back directly to OpenAI Realtime API...");
+                    _isDirectOpenAIFallback = true;
+                    StartAgent();
+                    return;
+                }
+
                 ScheduleReconnect();
-                Debug.Log($"[Arture] Relay disconnected ({code}).");
+                Debug.Log($"[Arture] Socket disconnected ({code}).");
             };
-            socket.OnError += _ => Debug.LogError("[Arture] Relay transport error. Check backend reachability and credential.");
+            socket.OnError += err =>
+            {
+                Debug.LogError($"[Arture] Transport error: {err}");
+                if (!_sessionReady && !_isDirectOpenAIFallback && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
+                {
+                    Debug.LogWarning("[Arture] Relay transport error during connection. Falling back directly to OpenAI Realtime API...");
+                    _isDirectOpenAIFallback = true;
+                    _ws = null;
+                    StartAgent();
+                }
+            };
             _ws.OnMessage += OnSocketMessage;
         }
 
