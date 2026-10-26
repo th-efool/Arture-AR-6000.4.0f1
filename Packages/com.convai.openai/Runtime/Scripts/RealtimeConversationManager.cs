@@ -144,7 +144,7 @@ namespace OpenAI
                 Debug.LogError($"[Arture] Connection attempt failed ({ex.GetType().Name}): {ex.Message}");
                 _ws = null;
                 _relayFailures++;
-                if (!_isDirectOpenAIFallback && !(_activeSettings != null && _activeSettings.isDirectOpenAI) && _relayFailures >= 3 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
+                if (!_isDirectOpenAIFallback && _relayFailures >= 3 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
                 {
                     Debug.LogWarning("[Arture] Live backend relay unreachable after 3 attempts. Falling back directly to OpenAI Realtime API...");
                     _isDirectOpenAIFallback = true;
@@ -383,29 +383,14 @@ namespace OpenAI
 
                 var directSession = new JObject
                 {
-                    ["type"] = "realtime",
                     ["instructions"] = enrichedPrompt,
-                    ["audio"] = new JObject
+                    ["modalities"]   = new JArray("text", "audio"),
+                    ["voice"]        = ResolveVoiceString(),
+                    ["input_audio_transcription"] = new JObject { ["model"] = "gpt-4o-mini-transcribe" },
+                    ["turn_detection"] = new JObject
                     {
-                        ["input"] = new JObject
-                        {
-                            ["format"] = new JObject { ["type"] = "audio/pcm", ["rate"] = 24000 },
-                            ["transcription"] = new JObject { ["model"] = "whisper-1" },
-                            ["turn_detection"] = new JObject
-                            {
-                                ["type"] = "server_vad",
-                                ["threshold"] = 0.5,
-                                ["prefix_padding_ms"] = 300,
-                                ["silence_duration_ms"] = 500,
-                                ["create_response"] = false,
-                                ["interrupt_response"] = true
-                            }
-                        },
-                        ["output"] = new JObject
-                        {
-                            ["format"] = new JObject { ["type"] = "audio/pcm", ["rate"] = 24000 },
-                            ["voice"] = ResolveVoiceString()
-                        }
+                        ["type"] = "server_vad",
+                        ["create_response"] = false
                     },
                     ["tools"] = AgentToolRegistry.GetToolsSpec()
                 };
@@ -692,7 +677,8 @@ namespace OpenAI
 
                 headers = new Dictionary<string, string>
                 {
-                    { "Authorization", $"Bearer {key}" }
+                    { "Authorization", $"Bearer {key}" },
+                    { "OpenAI-Beta", "realtime=v1" }
                 };
                 Debug.Log($"[Arture] Connecting directly to OpenAI Realtime: {directUrl} (Model: {model})");
                 onKnowledgeStatus?.Invoke("direct_openai");
@@ -718,9 +704,9 @@ namespace OpenAI
             {
                 _relayFailures = 0;
                 WorkerName = "Unassigned";
-                KnowledgeStatus = (_isDirectOpenAIFallback || (_activeSettings != null && _activeSettings.isDirectOpenAI)) ? "direct_openai" : "idle";
+                KnowledgeStatus = _isDirectOpenAIFallback ? "direct_openai" : "idle";
                 KnowledgeSourcesSummary = string.Empty;
-                if (!_isDirectOpenAIFallback && !(_activeSettings != null && _activeSettings.isDirectOpenAI))
+                if (!_isDirectOpenAIFallback)
                 {
                     IdentifyWorker(_workerPhone);
                     Debug.Log("[Arture] Relay socket open; waiting for voice session setup.");
@@ -740,7 +726,7 @@ namespace OpenAI
                 onAgentSpeaking?.Invoke(false);
 
                 // Retry relay first so Render cold-starts and live logging work
-                if (!_sessionReady && !_isDirectOpenAIFallback && !(_activeSettings != null && _activeSettings.isDirectOpenAI))
+                if (!_sessionReady && !_isDirectOpenAIFallback)
                 {
                     _relayFailures++;
                     if (_relayFailures >= 3 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
@@ -758,7 +744,7 @@ namespace OpenAI
             socket.OnError += err =>
             {
                 Debug.LogError($"[Arture] Transport error: {err}");
-                if (!_sessionReady && !_isDirectOpenAIFallback && !(_activeSettings != null && _activeSettings.isDirectOpenAI))
+                if (!_sessionReady && !_isDirectOpenAIFallback)
                 {
                     _relayFailures++;
                     if (_relayFailures >= 3 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))

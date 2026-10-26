@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 767208bd6749940fabcc8fc64e516708, type: 3}
   m_Name: OpenAIConfig
   m_EditorClassIdentifier: com.convai.openai::OpenAI.OpenAIConfig
-  relayWebsocketUrl: wss://api.openai.com/v1/realtime
+  relayWebsocketUrl: wss://arture-voice-relay.onrender.com/realtime
   relayAccessToken:
   assetCode: ATR-DEMO-PUMP-001
   directOpenAIWebsocketUrl: wss://api.openai.com/v1/realtime
