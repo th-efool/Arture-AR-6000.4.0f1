@@ -18,6 +18,10 @@ namespace OpenAI
 
         public static ArtureRelaySettings Load(OpenAIConfig config)
         {
+            if (config == null)
+            {
+                config = Resources.Load<OpenAIConfig>("OpenAIConfig");
+            }
             var settings = new ArtureRelaySettings
             {
                 url = config != null && !string.IsNullOrWhiteSpace(config.relayWebsocketUrl)

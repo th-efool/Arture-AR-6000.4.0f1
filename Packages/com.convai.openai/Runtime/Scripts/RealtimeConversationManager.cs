@@ -93,6 +93,50 @@ namespace OpenAI
 
         #region Unity lifecycle
 
+        private void Awake()
+        {
+            PrewarmCloudRelay();
+        }
+
+        private void PrewarmCloudRelay()
+        {
+            try
+            {
+                var settings = ArtureRelaySettings.Load(config);
+                var targetUrl = !string.IsNullOrWhiteSpace(settings?.cloudUrl)
+                    ? settings.cloudUrl
+                    : "https://arture-voice-relay.onrender.com/health";
+
+                if (targetUrl.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
+                    targetUrl = "https://" + targetUrl.Substring("wss://".Length);
+                else if (targetUrl.StartsWith("ws://", StringComparison.OrdinalIgnoreCase))
+                    targetUrl = "http://" + targetUrl.Substring("ws://".Length);
+
+                if (Uri.TryCreate(targetUrl, UriKind.Absolute, out var uri))
+                {
+                    var healthUrl = $"{uri.Scheme}://{uri.Authority}/health";
+                    StartCoroutine(PrewarmRelayCoroutine(healthUrl));
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Arture] Cloud relay pre-warm check skipped: {ex.Message}");
+            }
+        }
+
+        private System.Collections.IEnumerator PrewarmRelayCoroutine(string healthUrl)
+        {
+            using (var req = UnityEngine.Networking.UnityWebRequest.Get(healthUrl))
+            {
+                req.timeout = 25;
+                yield return req.SendWebRequest();
+                if (req.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+                    Debug.Log($"[Arture] Cloud relay pre-warmed successfully ({healthUrl}).");
+                else
+                    Debug.Log($"[Arture] Cloud relay pre-warm ping dispatched ({req.error}).");
+            }
+        }
+
         private void Start()
         {
             if (startOnAwake) StartAgent();
@@ -143,18 +187,27 @@ namespace OpenAI
             {
                 Debug.LogError($"[Arture] Connection attempt failed ({ex.GetType().Name}): {ex.Message}");
                 _ws = null;
-                _relayFailures++;
-                if (!_isDirectOpenAIFallback && _relayFailures >= 3 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
-                {
-                    Debug.LogWarning("[Arture] Live backend relay unreachable after 3 attempts. Falling back directly to OpenAI Realtime API...");
-                    _isDirectOpenAIFallback = true;
-                    _starting = false;
-                    StartAgent();
-                    return;
-                }
+                RecordRelayFailureAndCheckFallback($"connect exception: {ex.Message}");
                 ScheduleReconnect();
             }
             finally { _starting = false; }
+        }
+
+        private void RecordRelayFailureAndCheckFallback(string reason)
+        {
+            if (_sessionReady || _isDirectOpenAIFallback) return;
+
+            _relayFailures++;
+            Debug.LogWarning($"[Arture] Relay connection attempt failed ({reason}). Attempt {_relayFailures} of 5.");
+
+            if (_relayFailures >= 5 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
+            {
+                Debug.LogWarning("[Arture] Live backend relay unreachable after 5 attempts. Falling back directly to OpenAI Realtime API...");
+                _isDirectOpenAIFallback = true;
+                _starting = false;
+                _ws = null;
+                StartAgent();
+            }
         }
 
         public void StopAgent() => _ = Shutdown();
@@ -378,7 +431,7 @@ namespace OpenAI
                 var enrichedPrompt = systemPrompt ?? string.Empty;
                 if (!enrichedPrompt.Contains("Centrifugal Water Pump"))
                 {
-                    enrichedPrompt += "\nYou are the Arture AR assistant for the Centrifugal Water Pump (asset ATR-DEMO-PUMP-001). Guide the technician through maintenance, troubleshooting, and inspection. Use the available AR tools (Machine_HighlightComponent, Machine_ShowAnswer, Machine_ExplodeView, Machine_RotatePump) to visually illuminate and manipulate pump components in augmented reality whenever explaining them.";
+                    enrichedPrompt += "\nYou are the Arture AR assistant for the Centrifugal Water Pump (asset ATR-DEMO-PUMP-001). Guide the technician through maintenance, troubleshooting, and inspection. Use Machine_GetComponents to inspect machine parts, Machine_ShowAnswer to highlight a component and display spatial instructions, Machine_ShowMessage for spatial warnings/alerts, and Machine_Rotate, Machine_SetScale, or Machine_Translate to position the 3D model.";
                 }
 
                 var directSession = new JObject
@@ -536,12 +589,17 @@ namespace OpenAI
 
                 if (toolName == "Machine_ShowAnswer")
                 {
+                    var currentAnswer = args.Value<string>("answer") ?? string.Empty;
                     if (KnowledgeStatus == "retrieved" && !string.IsNullOrWhiteSpace(KnowledgeSourcesSummary))
-                        args["answer"] = (args.Value<string>("answer") ?? string.Empty) + "\n\nRetrieved references:\n" + KnowledgeSourcesSummary;
-                    else if (KnowledgeStatus == "no_sources" || KnowledgeStatus == "unavailable")
+                    {
+                        args["answer"] = currentAnswer + "\n\nRetrieved references:\n" + KnowledgeSourcesSummary;
+                    }
+                    else if (string.IsNullOrWhiteSpace(currentAnswer) && (KnowledgeStatus == "no_sources" || KnowledgeStatus == "unavailable"))
+                    {
                         args["answer"] = KnowledgeStatus == "no_sources"
                             ? "The uploaded manuals do not provide supporting passages for this question. Add a relevant manual or clarify the question."
                             : "The manual search is unavailable. Please try again before relying on an operating procedure.";
+                    }
                 }
 
                 object resultAny = await handler(args);
@@ -739,17 +797,9 @@ namespace OpenAI
                 _agentCurrentlySpeaking = false;
                 onAgentSpeaking?.Invoke(false);
 
-                // Retry relay first so Render cold-starts and live logging work
                 if (!_sessionReady && !_isDirectOpenAIFallback)
                 {
-                    _relayFailures++;
-                    if (_relayFailures >= 3 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
-                    {
-                        Debug.LogWarning("[Arture] Relay closed before session ready (3 attempts). Falling back directly to OpenAI Realtime API...");
-                        _isDirectOpenAIFallback = true;
-                        StartAgent();
-                        return;
-                    }
+                    RecordRelayFailureAndCheckFallback($"closed with code {code}");
                 }
 
                 ScheduleReconnect();
@@ -758,17 +808,6 @@ namespace OpenAI
             socket.OnError += err =>
             {
                 Debug.LogError($"[Arture] Transport error: {err}");
-                if (!_sessionReady && !_isDirectOpenAIFallback)
-                {
-                    _relayFailures++;
-                    if (_relayFailures >= 3 && !string.IsNullOrWhiteSpace(_activeSettings?.openAIApiKey))
-                    {
-                        Debug.LogWarning("[Arture] Relay transport error during connection (3 attempts). Falling back directly to OpenAI Realtime API...");
-                        _isDirectOpenAIFallback = true;
-                        _ws = null;
-                        StartAgent();
-                    }
-                }
             };
             _ws.OnMessage += OnSocketMessage;
         }
