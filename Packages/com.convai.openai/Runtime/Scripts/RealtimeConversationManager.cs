@@ -383,14 +383,29 @@ namespace OpenAI
 
                 var directSession = new JObject
                 {
+                    ["type"] = "realtime",
                     ["instructions"] = enrichedPrompt,
-                    ["modalities"]   = new JArray("text", "audio"),
-                    ["voice"]        = ResolveVoiceString(),
-                    ["input_audio_transcription"] = new JObject { ["model"] = "gpt-4o-mini-transcribe" },
-                    ["turn_detection"] = new JObject
+                    ["audio"] = new JObject
                     {
-                        ["type"] = "server_vad",
-                        ["create_response"] = false
+                        ["input"] = new JObject
+                        {
+                            ["format"] = new JObject { ["type"] = "audio/pcm", ["rate"] = 24000 },
+                            ["transcription"] = new JObject { ["model"] = "whisper-1" },
+                            ["turn_detection"] = new JObject
+                            {
+                                ["type"] = "server_vad",
+                                ["threshold"] = 0.5,
+                                ["prefix_padding_ms"] = 300,
+                                ["silence_duration_ms"] = 500,
+                                ["create_response"] = false,
+                                ["interrupt_response"] = true
+                            }
+                        },
+                        ["output"] = new JObject
+                        {
+                            ["format"] = new JObject { ["type"] = "audio/pcm", ["rate"] = 24000 },
+                            ["voice"] = ResolveVoiceString()
+                        }
                     },
                     ["tools"] = AgentToolRegistry.GetToolsSpec()
                 };
@@ -677,8 +692,7 @@ namespace OpenAI
 
                 headers = new Dictionary<string, string>
                 {
-                    { "Authorization", $"Bearer {key}" },
-                    { "OpenAI-Beta", "realtime=v1" }
+                    { "Authorization", $"Bearer {key}" }
                 };
                 Debug.Log($"[Arture] Connecting directly to OpenAI Realtime: {directUrl} (Model: {model})");
                 onKnowledgeStatus?.Invoke("direct_openai");
