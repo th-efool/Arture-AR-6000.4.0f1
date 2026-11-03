@@ -14,5 +14,15 @@ namespace OpenAI
         public string directOpenAIWebsocketUrl = "wss://api.openai.com/v1/realtime";
         [Tooltip("Fallback OpenAI API key (sk-...) used if the backend relay cannot be reached.")]
         public string fallbackOpenAIApiKey;
+
+        public string apiKey
+        {
+            get => fallbackOpenAIApiKey;
+            set => fallbackOpenAIApiKey = value;
+        }
+
+        [Header("Vector Database (RAG)")]
+        [Tooltip("Optional Vector DB / Knowledge Base configuration for semantic RAG retrieval.")]
+        public OpenAI.RAG.RagConfig vectorDbConfig;
     }
 }
