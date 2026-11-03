@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2153d99466df44d7aeb2c70faa5c9c10, type: 3}
+  m_Name: RagConfig
+  m_EditorClassIdentifier: com.convai.openai::OpenAI.RAG.RagConfig
+  openAIConfig: {fileID: 11400000, guid: 60840d095e62bb34182c87858f2a3c64, type: 2}
+  embeddingEndpoint: https://api.openai.com/v1/embeddings
+  embeddingModel: text-embedding-3-small
+  dimensions: 1536
+  backendType: 3
+  localDatabase: {fileID: 0}
+  databaseUri: https://e4aa181d-961a-4e8f-b5a5-118166e69d73.sa-east-1-0.aws.cloud.qdrant.io
+  collectionOrTableName: documents
+  supabaseRpcFunctionName: match_documents
+  runtimeApiKey: 
+  qdrantUrl: https://e4aa181d-961a-4e8f-b5a5-118166e69d73.sa-east-1-0.aws.cloud.qdrant.io
+  qdrantApiKey: 
+  qdrantCollection: documents
+  pineconeIndexHost: https://rag-provider-tests-ieyzlld.svc.aped-4627-b74a.pinecone.io
+  pineconeApiKey: 
+  pineconeNamespace: rag-provider-tests
+  supabaseUrl: https://hfiogejcvbknwhtvotfz.supabase.co
+  supabaseApiKey: sb_publishable_HqUCMWNAaBI3wa6fRCanrg_9yia5-cr
+  supabaseTable: rag_test_chunks
+  supabaseRpcFunction: match_documents
+  retrievalMode: 0
+  topK: 3
+  similarityThreshold: 0.35
+  toolName: search_knowledge_base
+  toolDescription: Searches the domain knowledge base for technical documentation,
+    troubleshooting procedures, manuals, and factual reference context.
+  chunkSize: 600
+  chunkOverlap: 100
+  embeddingBatchSize: 50

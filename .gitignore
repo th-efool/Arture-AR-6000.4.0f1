@@ -115,3 +115,7 @@ Assets/Resources/OpenAIConfig.asset
 Assets/Resources/ArtureRelayConnection.json
 Assets/Resources/ArtureRelayConnection.json.meta
 .arture-*/
+
+# Environment variables
+.env*
+!.env.example

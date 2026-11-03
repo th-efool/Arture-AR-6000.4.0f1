@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: OpenAIConfig
   m_EditorClassIdentifier: com.convai.openai::OpenAI.OpenAIConfig
   relayWebsocketUrl: wss://arture-voice-relay.onrender.com/realtime
-  relayAccessToken: 
+  relayAccessToken: wE__YMlYDWuq86rrLTcrcxtW4m47e7C0Wc1XyUlcXqo
   assetCode: ATR-DEMO-PUMP-001
   directOpenAIWebsocketUrl: wss://api.openai.com/v1/realtime
   fallbackOpenAIApiKey: 
+  vectorDbConfig: {fileID: 11400000, guid: 320abc577302a094d8db0c071d9fd8c6, type: 2}
