@@ -85,6 +85,37 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
     public float LastChunkSentTime { get; private set; } = -999f;
     public float CurrentMicRms { get; private set; }
 
+    private bool _isMicMuted;
+    public bool IsMicMuted
+    {
+        get => _isMicMuted;
+        set
+        {
+            if (_isMicMuted == value) return;
+            _isMicMuted = value;
+            if (_isMicMuted)
+            {
+                _isHoldingTalk = false;
+                SendWebSocketJson("{\"type\":\"input_audio_buffer.clear\"}");
+            }
+        }
+    }
+
+    private void OnEnable()
+    {
+        RealtimeConversationManager.OnMicrophoneMuteChanged += HandleMuteChanged;
+    }
+
+    private void OnDisable()
+    {
+        RealtimeConversationManager.OnMicrophoneMuteChanged -= HandleMuteChanged;
+    }
+
+    private void HandleMuteChanged(bool muted)
+    {
+        IsMicMuted = muted;
+    }
+
     private void Awake()
     {
         Instance = this;
@@ -296,6 +327,8 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             return;
 
         _pushToTalkMode = enabled;
+        _isMicMuted = false;
+        _conversationManager?.SetMicrophoneMuted(false);
         _isHoldingTalk = false;
         _speechStartTime = -999f;
         _speechSamplesRecorded = 0;
@@ -394,6 +427,18 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             toolBindings.RegisterAll();
         }
 
+        // Ensure RAG Knowledge Base Bridge is registered before sending session.update
+        var ragBridge = FindAnyObjectByType<OpenAI.RAG.RagConversationBridge>();
+        if (ragBridge == null && _conversationManager != null)
+        {
+            ragBridge = _conversationManager.gameObject.AddComponent<OpenAI.RAG.RagConversationBridge>();
+            ragBridge.ResolveConversationManager();
+        }
+        if (ragBridge != null && !ragBridge.IsRegistered)
+        {
+            ragBridge.Register();
+        }
+
         string basePrompt = _systemPromptField?.GetValue(_conversationManager) as string;
         if (string.IsNullOrWhiteSpace(basePrompt) || basePrompt.IndexOf("magical 3D cube", StringComparison.OrdinalIgnoreCase) >= 0)
         {
@@ -409,7 +454,8 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             "\n4. For a standalone warning, alert, or spatial direction that does not require component highlighting, call Machine_ShowMessage with the matching type and concise text. Include an exact component identifier only when the card should be placed above that component. For component Q&A, always use Machine_ShowAnswer instead." +
             "\n5. Inspect Machine_ShowMessage's 'uiDisplayed' and 'uiError' fields before claiming its card appeared." +
             "\n6. When asked to resize/scale, rotate, or move/translate the machine, call Machine_SetScale, Machine_Rotate, or Machine_Translate immediately." +
-            "\n7. Speak clearly and concisely in English (1-2 short sentences) to explain the answer aloud while the component is highlighted.";
+            "\n7. Speak clearly and concisely in English (1-2 short sentences) to explain the answer aloud while the component is highlighted." +
+            "\n8. For technical questions, troubleshooting procedures, repair manuals, lubrication specs, or maintenance steps, call search_knowledge_base to retrieve factual domain documentation before answering, and summarize the retrieved facts concisely.";
 
         string voiceStr = _resolveVoiceMethod?.Invoke(_conversationManager, null) as string ?? "alloy";
 
@@ -444,7 +490,7 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
                     {
                         ["model"] = _transcribeModel,
                         ["language"] = "en",
-                        ["prompt"] = "What does the impeller do, electric motor, motor terminal box, cooling fan cover, shaft coupling, coupling guard, pump casing, pump shaft, bearing housing, suction flange, discharge flange, baseplate, pump mounting foot, mounting bolt, scale, rotate, move, translate."
+                        ["prompt"] = "What does the impeller do, electric motor, motor terminal box, cooling fan cover, shaft coupling, coupling guard, pump casing, pump shaft, bearing housing, suction flange, discharge flange, baseplate, pump mounting foot, mounting bolt, scale, rotate, move, translate, search knowledge base, manual, troubleshooting, maintenance, torque, lubrication, specs."
                     },
                     ["turn_detection"] = turnDetectionToken
                 },
@@ -481,6 +527,12 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
         // If we aren't actively sending (e.g. AI is speaking or Tap-to-Speak is not active),
         // advance _lastSamplePos to live currentPos so zero old audio ever accumulates!
+        if (_isMicMuted || (_conversationManager != null && _conversationManager.IsMicrophoneMuted))
+        {
+            _lastSamplePos = currentPos;
+            return;
+        }
+
         bool aiPlayingAudio = _agentSpeaking || (_agentAudioSource != null && _agentAudioSource.isPlaying);
         if (aiPlayingAudio)
         {

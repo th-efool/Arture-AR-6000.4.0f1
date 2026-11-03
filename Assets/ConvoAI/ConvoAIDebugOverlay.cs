@@ -64,6 +64,12 @@ public class ConvoAIDebugOverlay : MonoBehaviour
     private GUIStyle _pttActiveStyle;
     private Texture2D _bgTex;
     private Texture2D _pttActiveTex;
+    private Texture2D _chipTex;
+    private GUIStyle _chipStyle;
+    private GUIStyle _inputFieldStyle;
+    private string _overlayInputText = "";
+    private bool _refocusInput;
+    private const string OverlayInputName = "ConvoAIOverlayInput";
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void RegisterEarlyLogListener()
@@ -367,6 +373,33 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             };
         }
         _pttActiveStyle.fontSize = headerSize;
+
+        if (_chipTex == null)
+        {
+            _chipTex = new Texture2D(1, 1);
+            _chipTex.SetPixel(0, 0, new Color(0.12f, 0.22f, 0.32f, 0.90f));
+            _chipTex.Apply();
+        }
+
+        if (_chipStyle == null)
+        {
+            _chipStyle = new GUIStyle(GUI.skin.button)
+            {
+                normal = { background = _chipTex, textColor = new Color(0.85f, 0.92f, 1.0f) },
+                margin = new RectOffset(2, 2, 2, 2),
+                padding = new RectOffset(5, 5, 2, 2)
+            };
+        }
+        _chipStyle.fontSize = Mathf.RoundToInt(10.5f * scale);
+
+        if (_inputFieldStyle == null)
+        {
+            _inputFieldStyle = new GUIStyle(GUI.skin.textField)
+            {
+                fontSize = fontSize
+            };
+        }
+        _inputFieldStyle.fontSize = fontSize;
     }
 
     private void OnGUI()
@@ -425,7 +458,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             return;
         }
 
-        float height = Mathf.Min(Screen.height * 0.62f, 460f * scale);
+        float height = Mathf.Min(Screen.height * 0.72f, 520f * scale);
         Rect panelRect = new Rect(x, y, width, height);
         GUI.Box(panelRect, GUIContent.none, _boxStyle);
 
@@ -525,7 +558,92 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         }
         GUILayout.EndScrollView();
 
+        GUILayout.Space(3f);
+
+        // Quick Preset Chips for Arture
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("🔍 Parts", _chipStyle, GUILayout.Height(22f * scale)))
+        {
+            SendTypedText("List the components of this centrifugal water pump.");
+        }
+        if (GUILayout.Button("⚙️ Impeller", _chipStyle, GUILayout.Height(22f * scale)))
+        {
+            SendTypedText("Highlight the impeller and describe its maintenance inspection.");
+        }
+        if (GUILayout.Button("📚 Seal RAG", _chipStyle, GUILayout.Height(22f * scale)))
+        {
+            SendTypedText("Search the manual for mechanical seal troubleshooting and torque specs.");
+        }
+        if (GUILayout.Button("🔄 Rotate 45°", _chipStyle, GUILayout.Height(22f * scale)))
+        {
+            SendTypedText("Rotate the machine 45 degrees on the Y axis.");
+        }
+        GUILayout.EndHorizontal();
+
+        GUILayout.Space(2f);
+
+        // Bottom Text Input Bar
+        Event currentEvent = Event.current;
+        bool enterPressed = false;
+        if (GUI.GetNameOfFocusedControl() == OverlayInputName && currentEvent.type == EventType.KeyDown)
+        {
+            if (currentEvent.keyCode == KeyCode.Return || currentEvent.keyCode == KeyCode.KeypadEnter)
+            {
+                enterPressed = true;
+                currentEvent.Use();
+            }
+        }
+
+        GUILayout.BeginHorizontal();
+        GUI.SetNextControlName(OverlayInputName);
+        _overlayInputText = GUILayout.TextField(_overlayInputText, _inputFieldStyle, GUILayout.Height(26f * scale));
+
+        bool canSend = _manager != null && _manager.IsSessionReady && !string.IsNullOrWhiteSpace(_overlayInputText);
+        GUI.enabled = canSend;
+        if (GUILayout.Button("Send 🚀", _buttonStyle, GUILayout.Width(65f * scale), GUILayout.Height(26f * scale)) || enterPressed)
+        {
+            SendTypedText(_overlayInputText);
+        }
+        GUI.enabled = true;
+
+        if (_agentSpeaking)
+        {
+            if (GUILayout.Button("⏹️ Stop", _buttonStyle, GUILayout.Width(55f * scale), GUILayout.Height(26f * scale)))
+            {
+                _manager?.InterruptNow();
+            }
+        }
+
+        bool isMicMuted = (_manager != null && _manager.IsMicrophoneMuted) || (starter != null && starter.IsMicMuted);
+        string micToggleText = isMicMuted ? "🔇" : "🎤";
+        if (GUILayout.Button(micToggleText, _buttonStyle, GUILayout.Width(34f * scale), GUILayout.Height(26f * scale)))
+        {
+            bool nextMute = !isMicMuted;
+            if (_manager != null) _manager.SetMicrophoneMuted(nextMute);
+            if (starter != null) starter.IsMicMuted = nextMute;
+        }
+
+        GUILayout.EndHorizontal();
+
+        if (_refocusInput)
+        {
+            _refocusInput = false;
+            GUI.FocusControl(OverlayInputName);
+        }
+
         GUILayout.EndArea();
+    }
+
+    private void SendTypedText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        if (_manager == null) _manager = FindAnyObjectByType<RealtimeConversationManager>();
+        if (_manager != null)
+        {
+            _manager.SendUserTextMessage(text, includeImageIfAvailable: true);
+            _overlayInputText = string.Empty;
+            _refocusInput = true;
+        }
     }
 
     private string GetWebSocketStatusText()
