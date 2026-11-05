@@ -1,61 +1,45 @@
-# IdiotHandOffManager Execution Ledger
+# IdiotHandOffManager Status Ledger
 
-- **Manager**: IdiotHandOffManager
-- **Guide**: `G1` -> `d:\ThisPC\Documents\ArtureUnity\Arture-AR-6000.4.0f1\IdiotHandOffGuide.md` (Readiness: `READY`, Commit: `3b721b8` on `main`)
-- **Root Directory**: `d:\ThisPC\Documents\ArtureUnity\Arture-AR-6000.4.0f1`
-- **Secondary Root**: `D:\ThisPC\Downloads\Compressed\ConversationalAIOpenSource`
-- **Status**: `COMPLETE`
-- **Execution Mode**: Multi-agent specialist hierarchy (4 parallel waves + manager gates)
-
----
-
-## 1. Work Items & Acceptance Ledger
-
-| Item ID | Description | Predecessors | Writable Files (Exclusive Set) | Assigned Specialist | State | Evidence |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **G1/S0** | Patch helper setup (`Patch-Block.ps1`) | None | `$env:TEMP\ph\Patch-Block.ps1` | Setup / Manager | `verified` | Pre-verified in preparation |
-| **G1/S1** | Create `IBulkExportProvider.cs` | G1/S0 | `Packages/com.convai.openai/Runtime/RAG/Interfaces/IBulkExportProvider.cs` | Vector Index Specialist (`366bfe10`) | `verified` | File created (812 B), UTF-8 no BOM |
-| **G1/S2** | Create `RagLocalIndex.cs` | G1/S0 | `Packages/com.convai.openai/Runtime/RAG/Providers/RagLocalIndex.cs` | Vector Index Specialist (`366bfe10`) | `verified` | File created (13,316 B), UTF-8 no BOM |
-| **G1/S6** | Update `OpenAIConfig.cs` & `ArtureRelaySettings.cs` | G1/S0 | `Packages/com.convai.openai/Runtime/Scripts/OpenAIConfig.cs`<br>`Packages/com.convai.openai/Runtime/Scripts/ArtureRelaySettings.cs` | Direct Audio Specialist (`5f5b8ade`) | `verified` | `preferDirectOpenAI` setting added & honored in `ArtureRelaySettings.Load` |
-| **G1/S3** | Update `QdrantVectorProvider.cs` | G1/S1 | `Packages/com.convai.openai/Runtime/RAG/Providers/QdrantVectorProvider.cs` | RAG Bridge Specialist (`74042df8`) | `verified` | Implements `IBulkExportProvider`, adds `ExportAllAsync` & `ParseScrollPage`, adds `"content"` fallback |
-| **G1/S4** | Update `RagConfig.cs` | G1/S0 | `Packages/com.convai.openai/Runtime/RAG/Models/RagConfig.cs` | RAG Bridge Specialist (`74042df8`) | `verified` | Added `enableLocalCache`, `persistLocalCacheToDisk`, `lexicalConfidence`, `toolMaxResults`, `toolMaxCharsPerChunk`, `warmupQueries` |
-| **G1/S5** | Create `RagLocalCache.cs` & Wire `RagConversationBridge.cs` | G1/S1, G1/S2, G1/S3, G1/S4 | `Packages/com.convai.openai/Runtime/RAG/RuntimeBridge/RagLocalCache.cs`<br>`Packages/com.convai.openai/Runtime/RAG/RuntimeBridge/RagConversationBridge.cs` | RAG Bridge Specialist (`74042df8`) | `verified` | In-memory cache manager, startup preload & warm-up, tool output capping; `dotnet build` passed (0 errors) |
-| **G1/S7** | Update `RealtimeConversationManager.cs` | G1/S6 | `Packages/com.convai.openai/Runtime/Scripts/RealtimeConversationManager.cs` | Realtime Telemetry Specialist (`75bd663a`) | `verified` | `IsDirectMode` unified, relay prewarm & messages skipped in direct mode, GA event spam silenced, muted clear skipped, `[Latency]` turn telemetry wired |
-| **G1/S8** | Update `ConvoAIDebugOverlay.cs` & `RagConfig.asset` | G1/S7, G1/S4 | `Assets/ConvoAI/ConvoAIDebugOverlay.cs`<br>`Assets/Resources/RagConfig.asset` | Realtime Telemetry Specialist (`75bd663a`) | `verified` | Green `Connected (OpenAI Direct)` status in overlay; target collection set to `arture-pump-manual` |
-| **G1/S9** | Seed & verify clean `arture-pump-manual` collection | G1/S8 | Remote Qdrant Cloud collection `arture-pump-manual` | Data Seeding Specialist (`5da6953b`) | `verified` | 4 pump chunks seeded; verified semantic search `pump_cp400_4_2_mechanical_seal` score 0.566 (`SEED OK`) |
-| **G1/S10** | Parity mirror to `ConversationalAIOpenSource` | G1/S5, G1/S7 | `D:\ThisPC\Downloads\Compressed\ConversationalAIOpenSource\com.convai.openai\Runtime\**` | Sync Specialist (`a554eeec`) | `verified` | All 9 runtime files + `.meta` files mirrored with exact byte parity |
+- **Guide**: `d:\ThisPC\Documents\ArtureUnity\Arture-AR-6000.4.0f1\IdiotHandOffGuide.md` (Multi-Backend `IBulkExportProvider` Parity)
+- **Baseline Git Commit**: `f195497` (main)
+- **Primary Repo**: `d:\ThisPC\Documents\ArtureUnity\Arture-AR-6000.4.0f1`
+- **Secondary Repo**: `D:\ThisPC\Downloads\Compressed\ConversationalAIOpenSource`
+- **Overall Status**: COMPLETE
 
 ---
 
-## 2. Verification Summary
+## Work Graph & Ownership Table
 
-### Check V1 — Standalone `RagLocalIndex` Unit & Perf Harness
-- **Command**: `dotnet run --project "$testDir\RagIndexHarness.csproj" -c Release`
-- **Result**: `PASS` (17/17 checks passed)
-  - BM25 lexical search over pump chunks: `<0.5 ms` (Coverage 100% on keyword matches)
-  - Vague / stop words / unrelated queries safely fall through
-  - Binary disk cache save & load (`RAGC` v1): round-trip verified, fingerprint mismatch & corruption handled safely
-  - 2,000 chunks x 1,536 dimensions benchmark:
-    - Index build: `57 ms`
-    - Semantic dot-product search: `2.14 ms / query`
-    - BM25 lexical search: `0.42 ms / query`
+| Item ID | Description | Target Files | Owner / Subagent | Status | Evidence |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **G2/S0** | Precheck & Patch Helper Setup | `$env:TEMP\ph\Patch-Block.ps1` | Manager | verified | Prechecks passed and Patch-Block.ps1 prepared |
+| **G2/S1** | LocalAssetVectorProvider `IBulkExportProvider` implementation | `Packages/com.convai.openai/Runtime/RAG/Providers/LocalAssetVectorProvider.cs` | Worker-1 | verified | Cloned `float[]` vectors, in-place L2 normalisation protection |
+| **G2/S2** | SupabaseVectorProvider `IBulkExportProvider` implementation | `Packages/com.convai.openai/Runtime/RAG/Providers/SupabaseVectorProvider.cs` | Worker-2 | verified | Paginated PostgREST `SELECT`, `pgvector` string + `JArray` support |
+| **G2/S3** | PineconeVectorProvider `IBulkExportProvider` implementation | `Packages/com.convai.openai/Runtime/RAG/Providers/PineconeVectorProvider.cs` | Worker-3 | verified | Dual-schema support: `2024-07` vector API + `2026-07` document-schema fallback |
+| **G2/S4** | Direct mode condition cleanup (`QA-VOICE-001`) | `Packages/com.convai.openai/Runtime/Scripts/RealtimeConversationManager.cs` | Worker-4 | verified | Uses `IsDirectMode` in `SendSessionUpdate()` |
+| **G2/S5** | Mirror modified runtime files to secondary package repo | `D:\ThisPC\Downloads\Compressed\ConversationalAIOpenSource\com.convai.openai\Runtime\**` | Worker-5 | verified | Mirrored all 4 files |
+| **G2/V1** | Multi-backend export parser & RagLocalIndex integration test | Standalone .NET 8 test harness | Manager | verified | 5/5 PASS (`ALL MULTI-BACKEND CHECKS PASSED`) |
+| **G2/V2** | Build `com.convai.openai.csproj` | `com.convai.openai.csproj` | Manager | verified | Build succeeded (`0 Error(s)`) |
+| **G2/V3** | Live Pinecone document-schema export check | Live Pinecone REST API | Manager | verified | `PINECONE EXPORT OK` (fetched `chunk_pinecone_1`) |
+| **G2/V4** | 12-file dual-repo parity check | Both repositories | Manager | verified | 12/12 `PARITY OK` byte-for-byte matching |
 
-### Check V2 — Package Compilation
-- **Command**: `dotnet build com.convai.openai.csproj --no-restore -v minimal`
-- **Result**: `PASS` (`4 Warning(s)`, `0 Error(s)`, exit code 0)
+---
 
-### Check V3 — Qdrant `arture-pump-manual` Collection Seeding & Search
-- **Command**: `powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\ph\Seed-PumpManual.ps1"`
-- **Result**: `PASS`
-  - Host: `e4aa181d-961a-4e8f-b5a5-118166e69d73.sa-east-1-0.aws.cloud.qdrant.io`
-  - Collection: `arture-pump-manual`
-  - Points: `4` (all non-empty text)
-  - Top query hit: `pump_cp400_4_2_mechanical_seal` (score = 0.566)
-  - Output: `SEED OK`
-
-### Check V4 — Requirement Acceptance Criteria
-- **R1** (Direct OpenAI Realtime WebSocket skipping Render relay): `VERIFIED`
-- **R2** (GA event handling, muted buffer guard, latency telemetry): `VERIFIED`
-- **R3** (Instant Local RAG Cache `<1 ms` lexical, `<2 ms` semantic): `VERIFIED`
-- **R4** (Payload schema fix and clean `arture-pump-manual` collection): `VERIFIED`
-- **R5** (Dual-repo parity mirror): `VERIFIED`
+## Final Verification Results
+1. **`V1` (Multi-Backend Test Harness)**:
+   - PASS: LocalAsset ScriptableObject original array is not mutated by RagLocalIndex in-place normalisation
+   - PASS: Cloned vector in RagLocalIndex is L2-normalised (magnitude 1.0)
+   - PASS: Multi-backend index holds all 4 entries (Local + Supabase + Pinecone)
+   - PASS: Lexical BM25 search finds Pinecone chunk in `<1 ms`
+   - PASS: Semantic search finds Supabase `pgvector` string-formatted chunk (`score > 0.99`)
+   - Outcome: `ALL MULTI-BACKEND CHECKS PASSED`
+2. **`V2` (C# Compilation)**:
+   - Command: `dotnet build "com.convai.openai.csproj" --no-restore -v minimal`
+   - Outcome: `0 Error(s)`
+3. **`V3` (Live Pinecone Verification)**:
+   - Endpoint: `https://rag-provider-tests-ieyzlld.svc.aped-4627-b74a.pinecone.io/namespaces/rag-provider-tests/documents/list` + `/documents/fetch`
+   - Document ID: `chunk_pinecone_1`
+   - Outcome: `PINECONE EXPORT OK`
+4. **`V4` (Dual-Repository Parity)**:
+   - All 12 runtime files match byte-for-byte across `Arture-AR-6000.4.0f1` and `ConversationalAIOpenSource`.
+   - Outcome: `PARITY OK` (12 files)
