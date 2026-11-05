@@ -14,6 +14,8 @@ namespace OpenAI
         public string directOpenAIWebsocketUrl = "wss://api.openai.com/v1/realtime";
         [Tooltip("Fallback OpenAI API key (sk-...) used if the backend relay cannot be reached.")]
         public string fallbackOpenAIApiKey;
+        [Tooltip("When true and an OpenAI API key is available, audio connects straight to OpenAI Realtime and skips the Arture relay (lowest latency). Turn off to route through the relay again.")]
+        public bool preferDirectOpenAI = true;
 
         public string apiKey
         {

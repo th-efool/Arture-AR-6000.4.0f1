@@ -19,12 +19,12 @@ MonoBehaviour:
   backendType: 3
   localDatabase: {fileID: 0}
   databaseUri: https://e4aa181d-961a-4e8f-b5a5-118166e69d73.sa-east-1-0.aws.cloud.qdrant.io
-  collectionOrTableName: documents
+  collectionOrTableName: arture-pump-manual
   supabaseRpcFunctionName: match_documents
   runtimeApiKey: 
   qdrantUrl: https://e4aa181d-961a-4e8f-b5a5-118166e69d73.sa-east-1-0.aws.cloud.qdrant.io
   qdrantApiKey: 
-  qdrantCollection: documents
+  qdrantCollection: arture-pump-manual
   pineconeIndexHost: https://rag-provider-tests-ieyzlld.svc.aped-4627-b74a.pinecone.io
   pineconeApiKey: 
   pineconeNamespace: rag-provider-tests

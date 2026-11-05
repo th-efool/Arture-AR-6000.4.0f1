@@ -73,6 +73,10 @@ namespace OpenAI
         private double _reconnectAt = double.PositiveInfinity;
         private int _reconnectAttempts;
         private readonly HashSet<string> _executingToolCalls = new ();
+        private readonly HashSet<string> _unhandledEventTypes = new ();
+        private double _turnT0 = -1.0;
+        private string _turnKind = "turn";
+        private bool _turnFirstAudioLogged;
         private int _toolsInFlight;
         private bool _toolContinuationPending;
         private int _turnGeneration;
@@ -84,7 +88,8 @@ namespace OpenAI
         public string WorkerName { get; private set; } = "Unassigned";
         public string KnowledgeStatus { get; private set; } = "idle";
         public string KnowledgeSourcesSummary { get; private set; } = string.Empty;
-        public bool IsDirectOpenAIFallback => _isDirectOpenAIFallback;
+        public bool IsDirectOpenAIFallback => IsDirectMode;
+        private bool IsDirectMode => _isDirectOpenAIFallback || (_activeSettings != null && _activeSettings.isDirectOpenAI);
         public string ActiveRelayUrl => _activeSettings?.url;
         public string CloudRelayUrl => _activeSettings?.cloudUrl ?? "wss://arture-voice-relay.onrender.com/realtime";
 public bool IsSessionReady => _sessionReady;
@@ -131,6 +136,7 @@ public bool IsSessionReady => _sessionReady;
             try
             {
                 var settings = ArtureRelaySettings.Load(config);
+                if (settings != null && settings.isDirectOpenAI) return;
                 var targetUrl = !string.IsNullOrWhiteSpace(settings?.cloudUrl)
                     ? settings.cloudUrl
                     : "https://arture-voice-relay.onrender.com/health";
@@ -257,7 +263,7 @@ public bool IsSessionReady => _sessionReady;
         public void IdentifyWorker(string phone)
         {
             _workerPhone = phone ?? "";
-            if (_ws != null && _ws.State == WebSocketState.Open && !string.IsNullOrWhiteSpace(_workerPhone))
+            if (_ws != null && _ws.State == WebSocketState.Open && !IsDirectMode && !string.IsNullOrWhiteSpace(_workerPhone))
                 _ = _ws.SendText(new JObject { ["type"] = "arture.identify", ["phone"] = _workerPhone }.ToString(Formatting.None));
         }
 
@@ -335,6 +341,8 @@ public bool IsSessionReady => _sessionReady;
                 return;
             }
 
+            MarkTurnStart("text");
+
             // 1. Barge-in: if agent is currently speaking or has an active turn, cancel it immediately
             if (_agentCurrentlySpeaking || _responseActive || _responseCreateSent)
             {
@@ -343,8 +351,11 @@ public bool IsSessionReady => _sessionReady;
                 _responseCreateSent = false;
             }
 
-            // 2. Clear any uncommitted mic audio
-            await _ws.SendText("{\"type\":\"input_audio_buffer.clear\"}");
+            // 2. Clear any uncommitted mic audio only when mic is active
+            if (!IsMicrophoneMuted)
+            {
+                await _ws.SendText("{\"type\":\"input_audio_buffer.clear\"}");
+            }
 
             // 3. Notify local listeners (UI logs, subtitles, RAG proactive context injection)
             string trimmedText = userText.Trim();
@@ -406,7 +417,7 @@ public bool IsSessionReady => _sessionReady;
 
                 if (_ws != null)
                 {
-                    if (_ws.State == WebSocketState.Open)
+                    if (_ws.State == WebSocketState.Open && !IsDirectMode)
                         await _ws.SendText("{\"type\":\"arture.session.end\"}");
                     await _ws.Close();
                     _ws = null;
@@ -530,6 +541,16 @@ public bool IsSessionReady => _sessionReady;
                     break;
 
                 case "rate_limits.updated":
+                case "conversation.item.done":
+                case "conversation.item.truncated":
+                case "conversation.item.input_audio_transcription.segment":
+                case "input_audio_buffer.cleared":
+                case "response.output_text.delta":
+                case "response.output_text.done":
+                    HandleNoop();
+                    break;
+
+                case "conversation.item.added":
                     HandleNoop();
                     break;
 
@@ -538,7 +559,8 @@ public bool IsSessionReady => _sessionReady;
                     break;
 
                 default:
-                    Debug.Log($"[OpenAI] Unhandled event type: {baseEvt?.Type}");
+                    if (_unhandledEventTypes.Add(baseEvt?.Type ?? "(null)"))
+                        Debug.Log($"[OpenAI] Unhandled event type (logged once): {baseEvt?.Type}");
                     break;
             }
         }
@@ -562,7 +584,7 @@ public bool IsSessionReady => _sessionReady;
 
         private void SendSessionUpdate()
         {
-            if (_isDirectOpenAIFallback || (_activeSettings != null && _activeSettings.isDirectOpenAI))
+            if (IsDirectMode)
             {
                 var enrichedPrompt = systemPrompt ?? string.Empty;
                 if (!enrichedPrompt.Contains("Centrifugal Water Pump"))
@@ -912,9 +934,9 @@ public bool IsSessionReady => _sessionReady;
             {
                 _relayFailures = 0;
                 WorkerName = "Unassigned";
-                KnowledgeStatus = _isDirectOpenAIFallback ? "direct_openai" : "idle";
+                KnowledgeStatus = IsDirectMode ? "direct_openai" : "idle";
                 KnowledgeSourcesSummary = string.Empty;
-                if (!_isDirectOpenAIFallback)
+                if (!IsDirectMode)
                 {
                     IdentifyWorker(_workerPhone);
                     Debug.Log("[Arture] Relay socket open; waiting for voice session setup.");
@@ -933,7 +955,7 @@ public bool IsSessionReady => _sessionReady;
                 _agentCurrentlySpeaking = false;
                 onAgentSpeaking?.Invoke(false);
 
-                if (!_sessionReady && !_isDirectOpenAIFallback)
+                if (!_sessionReady && !IsDirectMode)
                 {
                     RecordRelayFailureAndCheckFallback($"closed with code {code}");
                 }
@@ -980,7 +1002,7 @@ public bool IsSessionReady => _sessionReady;
             SendResponseCreate();
         }
 
-        private static void HandleInputCommitted() { }
+        private void HandleInputCommitted() { MarkTurnStart("voice"); }
 
         private void HandleInputTranscriptDelta(string json)
         {
@@ -1005,6 +1027,7 @@ public bool IsSessionReady => _sessionReady;
 
         private void HandleResponseAudioDelta(string json)
         {
+            LogFirstAudioLatency();
             if (!_agentCurrentlySpeaking)
             {
                 _agentCurrentlySpeaking = true;
@@ -1133,6 +1156,38 @@ public bool IsSessionReady => _sessionReady;
                 _responseCreateSent = false;
             }
             StopThinkingSfx();
+        }
+
+        private void MarkTurnStart(string kind)
+        {
+            _turnT0 = Time.realtimeSinceStartupAsDouble;
+            _turnKind = kind;
+            _turnFirstAudioLogged = false;
+        }
+
+        private void LogFirstAudioLatency()
+        {
+            if (_turnT0 < 0.0 || _turnFirstAudioLogged) return;
+            _turnFirstAudioLogged = true;
+            double ms = (Time.realtimeSinceStartupAsDouble - _turnT0) * 1000.0;
+            Debug.Log($"[Latency] {_turnKind} turn -> first audio: {ms:F0} ms ({(IsDirectMode ? "direct" : "relay")})");
+        }
+
+        private static void HandleItemAddedDiag(string json)
+        {
+            if (!Debug.isDebugBuild) return;
+            try
+            {
+                var item = JObject.Parse(json)["item"] as JObject;
+                if (item == null) return;
+                var content = item["content"] as JArray;
+                string kind = content != null && content.Count > 0 ? (content[0]["type"]?.ToString() ?? "-") : "-";
+                Debug.Log($"[OpenAI] item.added role={item.Value<string>("role") ?? "-"} type={item.Value<string>("type") ?? "-"} content={kind} id={item.Value<string>("id")}");
+            }
+            catch (Exception)
+            {
+                // diagnostics only
+            }
         }
 
         private static void HandleNoop() { }

@@ -86,6 +86,11 @@ namespace OpenAI
                 settings.openAIApiKey = settings.accessToken;
             }
 
+            if (config != null && config.preferDirectOpenAI && !string.IsNullOrWhiteSpace(settings.openAIApiKey))
+            {
+                settings.isDirectOpenAI = true;
+            }
+
             return settings;
         }
     }

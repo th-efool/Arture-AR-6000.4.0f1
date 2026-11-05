@@ -652,7 +652,9 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             return "<color=#FF5252>No Manager</color>";
 
         if (_manager.IsDirectOpenAIFallback)
-            return "<color=#FFD54F>Direct OpenAI (Fallback)</color>";
+            return _manager.IsSessionReady
+                ? "<color=#66BB6A>Connected (OpenAI Direct)</color>"
+                : "<color=#FFD54F>Direct OpenAI (connecting...)</color>";
 
         var ws = _wsField?.GetValue(_manager) as WebSocket;
         bool sessionReady = _manager.IsSessionReady;

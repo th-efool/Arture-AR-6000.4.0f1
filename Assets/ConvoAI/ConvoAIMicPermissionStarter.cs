@@ -18,8 +18,9 @@ using UnityEngine.Android;
 /// upgrades the Realtime API session to use:
 /// - 24 kHz mono PCM16 input audio (fixing the 16kHz -> 24kHz 1.5x pitch/speed distortion in MicrophoneStreamer)
 ///   with a full drain loop and non-blocking async WebSocket sends so zero audio backlog can ever build up,
-/// - English-locked gpt-live-transcribe / gpt-transcribe with near_field noise reduction and responsive VAD,
-/// - Automatic mic gating while the AI is speaking to prevent speaker feedback loops,
+/// - Virtual/loopback audio device filtering (e.g. FliFlik, VB-Cable, Stereo Mix) so PC desktop audio never auto-triggers turns,
+/// - RMS silence gating with VAD hangover so dead silence never floods the WebSocket,
+/// - Automatic mic gating while the AI is speaking (including queued PcmAudioPlayer chunks) to prevent speaker feedback loops,
 /// - Reliable Tap-to-Speak / Push-to-Talk mode with micro-tap guard and synchronized WebSocket delivery.
 /// </summary>
 [DefaultExecutionOrder(-100)]
@@ -29,6 +30,23 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
     private const int OpenAISampleRate = 24_000;
     private const int ChunkSamples24k = 2_400; // 100 ms at 24 kHz (10 packets/sec instead of 16)
+    private const float RmsVoiceThreshold = 0.0025f; // Noise floor gate for Auto-VAD
+    private const float VadSilenceHangoverSec = 0.65f; // Trailing silence sent after speech so 350ms server_vad closes turn cleanly
+
+    private static readonly string[] VirtualAudioKeywords =
+    {
+        "fliflik",
+        "virtual audio",
+        "vb-audio",
+        "cable output",
+        "voicemeeter",
+        "stereo mix",
+        "what u hear",
+        "loopback",
+        "soundflower",
+        "blackhole",
+        "steam streaming"
+    };
 
     // Default to gpt-live-transcribe for instant low-latency continuous live transcription
     private string _transcribeModel = "gpt-live-transcribe";
@@ -66,19 +84,23 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
     private int _micClipFreq;
     private int _chunkSamplesIn;
     private int _lastSamplePos;
+    private float[] _ReusableChunkBuffer;
 
     private bool _agentSpeaking;
     private float _agentFinishedSpeakingTime = -999f;
+    private float _lastVoiceActivityTime = -999f;
     private float _responseActiveSince = -999f;
     private bool _customSessionConfigured;
     private bool _pushToTalkMode;
     private bool _isHoldingTalk;
     private float _speechStartTime = -999f;
     private int _speechSamplesRecorded;
+    private bool _noPhysicalMicDetected;
 
     public bool PushToTalkMode => _pushToTalkMode;
     public bool IsHoldingTalk => _isHoldingTalk;
     public bool IsListening => _isHoldingTalk;
+    public bool NoPhysicalMicDetected => _noPhysicalMicDetected;
     public float CurrentSpeechDuration => (_isHoldingTalk && _speechStartTime > 0f) ? (Time.unscaledTime - _speechStartTime) : 0f;
     public bool IsCapturing24k => _micClip24k != null && !string.IsNullOrEmpty(_micDevice) && Microphone.IsRecording(_micDevice);
     public int SentChunksCount { get; private set; }
@@ -114,6 +136,38 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
     private void HandleMuteChanged(bool muted)
     {
         IsMicMuted = muted;
+    }
+
+    private static bool IsVirtualOrLoopbackDevice(string deviceName)
+    {
+        if (string.IsNullOrWhiteSpace(deviceName))
+            return true;
+
+        for (int i = 0; i < VirtualAudioKeywords.Length; i++)
+        {
+            if (deviceName.IndexOf(VirtualAudioKeywords[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+        }
+        return false;
+    }
+
+    private static string FindPhysicalMicrophoneDevice(out string ignoredVirtualDevice)
+    {
+        ignoredVirtualDevice = null;
+        var devices = Microphone.devices;
+        if (devices == null || devices.Length == 0)
+            return null;
+
+        for (int i = 0; i < devices.Length; i++)
+        {
+            string dev = devices[i];
+            if (!IsVirtualOrLoopbackDevice(dev))
+                return dev;
+            if (ignoredVirtualDevice == null)
+                ignoredVirtualDevice = dev;
+        }
+
+        return null;
     }
 
     private void Awake()
@@ -299,13 +353,40 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             _micStreamer.enabled = false;
         }
 
-        if (Microphone.devices.Length == 0)
+        string physicalMic = FindPhysicalMicrophoneDevice(out string ignoredVirtual);
+        if (string.IsNullOrEmpty(physicalMic))
         {
-            Debug.LogError("[ConvoAI] No microphone devices found.");
+            _noPhysicalMicDetected = true;
+            _micDevice = null;
+            _micClip24k = null;
+            _pushToTalkMode = true;
+            _isMicMuted = true;
+            _conversationManager?.SetMicrophoneMuted(true);
+
+            if (!string.IsNullOrEmpty(ignoredVirtual))
+            {
+                Debug.LogWarning($"[ConvoAI] No physical mic connected (ignored virtual/loopback device '{ignoredVirtual}'). Mic muted & Auto-VAD disabled so desktop audio never auto-sends.");
+            }
+            else
+            {
+                Debug.LogWarning("[ConvoAI] No microphone connected. Mic muted & Auto-VAD disabled (Text chat mode active).");
+            }
+
+            SendEnhancedSessionUpdate();
             return;
         }
 
-        _micDevice = Microphone.devices[0];
+        _noPhysicalMicDetected = false;
+        StartMicCaptureOnDevice(physicalMic);
+        SendEnhancedSessionUpdate();
+    }
+
+    private bool StartMicCaptureOnDevice(string deviceName)
+    {
+        if (string.IsNullOrEmpty(deviceName))
+            return false;
+
+        _micDevice = deviceName;
         if (Microphone.IsRecording(_micDevice)) Microphone.End(_micDevice);
         // Use a 10-second ring buffer so wrap-around edge cases never cause lag or lost speech
         _micClip24k = Microphone.Start(_micDevice, true, 10, OpenAISampleRate);
@@ -313,18 +394,31 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         {
             _micClipFreq = _micClip24k.frequency;
             _chunkSamplesIn = Mathf.RoundToInt(ChunkSamples24k * (float)_micClipFreq / OpenAISampleRate);
+            _ReusableChunkBuffer = new float[_chunkSamplesIn];
             _lastSamplePos = Microphone.GetPosition(_micDevice);
             if (_lastSamplePos < 0) _lastSamplePos = 0;
             Debug.Log($"[ConvoAI] Started 24kHz Mic Stream: device='{_micDevice}', hardwareRate={_micClipFreq}Hz -> 24000Hz PCM16");
+            return true;
         }
-
-        SendEnhancedSessionUpdate();
+        return false;
     }
 
     public void SetPushToTalkMode(bool enabled)
     {
         if (_pushToTalkMode == enabled)
             return;
+
+        if (!enabled && _noPhysicalMicDetected)
+        {
+            string physicalMic = FindPhysicalMicrophoneDevice(out _);
+            if (string.IsNullOrEmpty(physicalMic))
+            {
+                Debug.LogWarning("[ConvoAI] Cannot enable Auto-VAD without a physical microphone connected (prevents virtual audio loopback).");
+                return;
+            }
+            _noPhysicalMicDetected = false;
+            StartMicCaptureOnDevice(physicalMic);
+        }
 
         _pushToTalkMode = enabled;
         _isMicMuted = false;
@@ -365,6 +459,20 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
     public void BeginTapToSpeak()
     {
+        if (_micClip24k == null)
+        {
+            string physicalMic = FindPhysicalMicrophoneDevice(out _);
+            if (string.IsNullOrEmpty(physicalMic))
+            {
+                Debug.LogWarning("[ConvoAI] Cannot start Tap-to-Speak: no physical microphone is connected.");
+                return;
+            }
+            _noPhysicalMicDetected = false;
+            _isMicMuted = false;
+            _conversationManager?.SetMicrophoneMuted(false);
+            StartMicCaptureOnDevice(physicalMic);
+        }
+
         _isHoldingTalk = true;
         _speechStartTime = Time.unscaledTime;
         _speechSamplesRecorded = 0;
@@ -380,7 +488,6 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         }
 
         SendWebSocketJson("{\"type\":\"input_audio_buffer.clear\"}");
-        Debug.Log("[ConvoAI] Tap to Speak: LISTENING... (Speak your command)");
     }
 
     public void EndTapToSpeak()
@@ -399,7 +506,6 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         if (_speechSamplesRecorded < 2400 || duration < 0.12f)
         {
             SendWebSocketJson("{\"type\":\"input_audio_buffer.clear\"}");
-            Debug.Log("[ConvoAI] Tap duration too short (< 120ms). Audio discarded without sending.");
             return;
         }
 
@@ -408,7 +514,6 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
         SendWebSocketJson("{\"type\":\"input_audio_buffer.commit\"}");
         _conversationManager.RequestResponse();
-        Debug.Log($"[ConvoAI] Tap to speak finished ({duration:F1}s, {_speechSamplesRecorded} samples): Committed & AI response requested.");
     }
 
     public void BeginPushToTalk() => BeginTapToSpeak();
@@ -461,7 +566,7 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
 
         // Fast, responsive turn detection: 350ms silence duration & 0.55 threshold so commands execute immediately after speaking!
         // Note: create_response is false because RealtimeConversationManager.HandleSpeechStopped sends response.create itself.
-        JToken turnDetectionToken = _pushToTalkMode
+        JToken turnDetectionToken = (_pushToTalkMode || _noPhysicalMicDetected)
             ? JValue.CreateNull()
             : new JObject
             {
@@ -533,14 +638,18 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             return;
         }
 
-        bool aiPlayingAudio = _agentSpeaking || (_agentAudioSource != null && _agentAudioSource.isPlaying);
+        // Check both _agentSpeaking AND PcmAudioPlayer.IsPlaying (which covers queued clips between Update frames)
+        bool aiPlayingAudio = _agentSpeaking
+            || (_audioPlayer != null && _audioPlayer.IsPlaying)
+            || (_agentAudioSource != null && _agentAudioSource.isPlaying);
         if (aiPlayingAudio)
         {
             _agentFinishedSpeakingTime = Time.unscaledTime;
             _lastSamplePos = currentPos;
             return;
         }
-        if (Time.unscaledTime - _agentFinishedSpeakingTime < 0.25f)
+        // 450ms post-playback acoustic echo cooldown
+        if (Time.unscaledTime - _agentFinishedSpeakingTime < 0.45f)
         {
             _lastSamplePos = currentPos;
             return;
@@ -559,17 +668,21 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             samplesAvailable = _chunkSamplesIn;
         }
 
+        if (_ReusableChunkBuffer == null || _ReusableChunkBuffer.Length != _chunkSamplesIn)
+        {
+            _ReusableChunkBuffer = new float[_chunkSamplesIn];
+        }
+
         // Drain all available full chunks in a while loop so we NEVER fall behind real-time!
         int chunksProcessedThisFrame = 0;
         while (samplesAvailable >= _chunkSamplesIn && chunksProcessedThisFrame < 5)
         {
             chunksProcessedThisFrame++;
-            var inBuf = new float[_chunkSamplesIn];
-            ReadCircular(_micClip24k, _lastSamplePos, inBuf);
+            ReadCircular(_micClip24k, _lastSamplePos, _ReusableChunkBuffer);
             _lastSamplePos = (_lastSamplePos + _chunkSamplesIn) % clipSamples;
             samplesAvailable -= _chunkSamplesIn;
 
-            SendAudioSamplesBuffer(inBuf);
+            SendAudioSamplesBuffer(_ReusableChunkBuffer);
         }
 
         // When finishing Tap-to-Speak, flush any partial trailing samples (> 20ms)
@@ -588,6 +701,19 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         for (int i = 0; i < inBuf.Length; i++)
             sumSq += inBuf[i] * inBuf[i];
         CurrentMicRms = Mathf.Sqrt(sumSq / Mathf.Max(1, inBuf.Length));
+
+        // In Auto-VAD mode, gate out dead silence after VadSilenceHangoverSec so idle rooms send 0 WebSocket packets
+        if (!_pushToTalkMode)
+        {
+            if (CurrentMicRms >= RmsVoiceThreshold)
+            {
+                _lastVoiceActivityTime = Time.unscaledTime;
+            }
+            else if (Time.unscaledTime - _lastVoiceActivityTime > VadSilenceHangoverSec)
+            {
+                return;
+            }
+        }
 
         _speechSamplesRecorded += inBuf.Length;
 
