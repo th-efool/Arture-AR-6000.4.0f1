@@ -67,21 +67,6 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
         }
     }
 
-    [Range(0.5f, 1.5f)]
-    [SerializeField] private float voiceSpeed = 1.15f;
-    public float VoiceSpeed
-    {
-        get => voiceSpeed;
-        set
-        {
-            voiceSpeed = Mathf.Clamp(value, 0.5f, 1.5f);
-            if (_customSessionConfigured)
-            {
-                SendEnhancedSessionUpdate();
-            }
-        }
-    }
-
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoInitialize()
     {
