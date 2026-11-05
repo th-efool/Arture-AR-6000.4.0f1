@@ -169,3 +169,8 @@ No new automated test files were added to the repository. Existing validators do
 
 Audit deliverable is this assessment file. Application code, ledger and memory corrections require a subsequent implementation task.
 
+
+## Applied correction verification
+
+F2, F3 and F4 were corrected after this assessment. Isolated production-method replay now preserves the 23-character preview after delayed transcription, receives two rows from a replacement manager, and stops the tour before its second step on early interruption. Both Unity assemblies compile. F1 ledger classifications were corrected and F5 consumer-specific sibling memory was removed. Live V1–V7 acceptance remains outstanding.
+

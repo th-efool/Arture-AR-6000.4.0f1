@@ -187,7 +187,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         BindSceneComponents();
     }
 
-    private bool _eventsBound;
+    private RealtimeConversationManager _boundManager;
 
     private void BindSceneComponents()
     {
@@ -200,40 +200,19 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         if (_toolBindings == null)
             _toolBindings = FindAnyObjectByType<ToolBindings>();
 
-        if (_manager != null && !_eventsBound)
+        if (_boundManager != _manager)
         {
-            _eventsBound = true;
-
-            _manager.onUserSpeaking.AddListener(speaking => _userSpeaking = speaking);
-            _manager.onAgentSpeaking.AddListener(speaking => _agentSpeaking = speaking);
-
-            _manager.onUserTranscript.AddListener(text =>
+            UnbindManager();
+            _boundManager = _manager;
+            if (_boundManager != null)
             {
-                if (!string.IsNullOrEmpty(text))
-                {
-                    _lastAgentTranscript = "";
-                    _previewItemId = null;
-                    _lastUserTranscript = text.Trim();
-                    AddLog($"💬 You: \"{_lastUserTranscript}\"");
-                }
-            });
-
-            _manager.AgentItemDelta += (id, delta) =>
-            {
-                if (string.IsNullOrEmpty(id)) return;
-                if (_previewItemId != id) _lastAgentTranscript = "";
-                _previewItemId = id;
-                _lastAgentTranscript += delta;
-            };
-            _manager.AgentItemFinished += (id, text, interrupted) =>
-            {
-                if (string.IsNullOrWhiteSpace(text)) return;
-                if (_previewItemId == id) _lastAgentTranscript = text;
-                string label = interrupted ? "AI (interrupted)" : "AI";
-                AddLog($"{label}: {text}");
-            };
+                _boundManager.onUserSpeaking.AddListener(OnUserSpeaking);
+                _boundManager.onAgentSpeaking.AddListener(OnAgentSpeaking);
+                _boundManager.onUserTranscript.AddListener(OnUserTranscript);
+                _boundManager.AgentItemDelta += OnAgentItemDelta;
+                _boundManager.AgentItemFinished += OnAgentItemFinished;
+            }
         }
-
         if (_micStreamer != null)
         {
             _micStreamer.OnAudioChunk -= OnMicAudioChunk;
@@ -243,6 +222,54 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         LogRegisteredToolsSummary();
     }
 
+    private void UnbindManager()
+    {
+        if (ReferenceEquals(_boundManager, null)) return;
+        _boundManager.onUserSpeaking.RemoveListener(OnUserSpeaking);
+        _boundManager.onAgentSpeaking.RemoveListener(OnAgentSpeaking);
+        _boundManager.onUserTranscript.RemoveListener(OnUserTranscript);
+        _boundManager.AgentItemDelta -= OnAgentItemDelta;
+        _boundManager.AgentItemFinished -= OnAgentItemFinished;
+        _boundManager = null;
+    }
+
+    private void OnDestroy()
+    {
+        UnbindManager();
+        if (_micStreamer != null) _micStreamer.OnAudioChunk -= OnMicAudioChunk;
+        if (Instance == this) Instance = null;
+    }
+
+    private void OnUserSpeaking(bool speaking)
+    {
+        _userSpeaking = speaking;
+    }
+
+    private void OnAgentSpeaking(bool speaking) => _agentSpeaking = speaking;
+
+    private void OnUserTranscript(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        _lastUserTranscript = text.Trim();
+        AddLog($"💬 You: \"{_lastUserTranscript}\"");
+    }
+
+    private void OnAgentItemDelta(string id, string delta)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        if (_previewItemId != id) _lastAgentTranscript = "";
+        _previewItemId = id;
+        _lastAgentTranscript += delta;
+    }
+
+    private void OnAgentItemFinished(string id, string text, bool interrupted)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        _previewItemId = id;
+        _lastAgentTranscript = text;
+        string label = interrupted ? "AI (interrupted)" : "AI";
+        AddLog($"{label}: {text}");
+    }
     private void LogRegisteredToolsSummary()
     {
         try

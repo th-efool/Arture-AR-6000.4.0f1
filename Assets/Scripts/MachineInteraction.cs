@@ -692,6 +692,7 @@ public class MachineInteraction : MonoBehaviour
         if (!speaking)
             return;
 
+        tourParts = null;
         // Guard against clearing a newly displayed answer if a late VAD event fires in the same frame/turn
         if (Application.isPlaying && (Time.unscaledTime - lastAnswerShownUnscaledTime) < 0.25f)
             return;

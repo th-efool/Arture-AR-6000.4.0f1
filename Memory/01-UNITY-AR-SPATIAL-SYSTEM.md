@@ -82,3 +82,5 @@ All methods below are marked `[Preserve]` for IL2CPP/Quest builds, take a single
 ### Conversation and walkthrough behavior
 
 MachineInteraction and Assets/MachineTools.json expose Machine_StartComponentTour and Machine_StopComponentTour. Start enumerates highlightable profile entries and shows one existing highlight/card pair every six unscaled seconds. ClearAnswer, interruption, disable and replacement clear tour state. A partial visual failure ends progression. Extend this through the profile inventory and Machine_ShowAnswer.
+
+Tour progression is cancelled on user speech start before the visual-clear grace period is evaluated.

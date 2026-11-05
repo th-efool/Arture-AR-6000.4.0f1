@@ -82,3 +82,5 @@ Unity Scene Load
 ### Conversation and walkthrough behavior
 
 RealtimeConversationManager publishes assistant item-keyed preview deltas and final assistant message content for ConvoAIDebugOverlay history. Agent speaking is an audio status only. Typed submissions and completed voice transcripts publish onUserTranscript once; input deltas do not. Direct session instructions route walkthroughs to the tour tools and require explicit source/absence reporting.
+
+The HUD owns named subscriptions to the actual bound manager and detaches them on replacement or destruction. Final user transcription does not reset the assistant item preview. Assistant item identity controls preview replacement.
