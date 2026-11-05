@@ -52,6 +52,36 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
     private string _transcribeModel = "gpt-live-transcribe";
     public string TranscribeModel => _transcribeModel;
 
+    [Range(0.5f, 1.5f)]
+    [SerializeField] private float voiceSpeed = 1.15f;
+    public float VoiceSpeed
+    {
+        get => voiceSpeed;
+        set
+        {
+            voiceSpeed = Mathf.Clamp(value, 0.5f, 1.5f);
+            if (_customSessionConfigured)
+            {
+                SendEnhancedSessionUpdate();
+            }
+        }
+    }
+
+    [Range(0.5f, 1.5f)]
+    [SerializeField] private float voiceSpeed = 1.15f;
+    public float VoiceSpeed
+    {
+        get => voiceSpeed;
+        set
+        {
+            voiceSpeed = Mathf.Clamp(value, 0.5f, 1.5f);
+            if (_customSessionConfigured)
+            {
+                SendEnhancedSessionUpdate();
+            }
+        }
+    }
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoInitialize()
     {
@@ -559,7 +589,7 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             "\n4. For a standalone warning, alert, or spatial direction that does not require component highlighting, call Machine_ShowMessage with the matching type and concise text. Include an exact component identifier only when the card should be placed above that component. For component Q&A, always use Machine_ShowAnswer instead." +
             "\n5. Inspect Machine_ShowMessage's 'uiDisplayed' and 'uiError' fields before claiming its card appeared." +
             "\n6. When asked to resize/scale, rotate, or move/translate the machine, call Machine_SetScale, Machine_Rotate, or Machine_Translate immediately." +
-            "\n7. Speak clearly and concisely in English (1-2 short sentences) to explain the answer aloud while the component is highlighted." +
+            "\n7. Speak briskly, clearly, and concisely in English (1-2 short punchy sentences) with an energetic, natural conversational pace." +
             "\n8. For technical questions, troubleshooting procedures, repair manuals, lubrication specs, or maintenance steps, call search_knowledge_base to retrieve factual domain documentation before answering, and summarize the retrieved facts concisely.";
 
         string voiceStr = _resolveVoiceMethod?.Invoke(_conversationManager, null) as string ?? "alloy";
@@ -601,7 +631,8 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
                 },
                 ["output"] = new JObject
                 {
-                    ["voice"] = voiceStr
+                    ["voice"] = voiceStr,
+                    ["speed"] = voiceSpeed
                 }
             }
         };
