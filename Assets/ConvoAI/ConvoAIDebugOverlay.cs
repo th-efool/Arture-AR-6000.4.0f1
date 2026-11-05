@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Text;
 using NativeWebSocket;
 using Newtonsoft.Json.Linq;
 using OpenAI;
@@ -53,7 +52,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
     private int _micChunkCount;
     private float _lastMicChunkTime = -999f;
     private string _lastUserTranscript = "";
-    private readonly StringBuilder _agentTranscriptBuilder = new StringBuilder();
+    private string _previewItemId;
     private string _lastAgentTranscript = "";
 
     private GUIStyle _boxStyle;
@@ -132,6 +131,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             condition.IndexOf("[MachineInteraction]", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("[WorldSpaceUI]", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("[Arture]", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            condition.StartsWith("[Latency] RAG ", StringComparison.Ordinal) ||
             condition.IndexOf("ToolBindings", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("Machine_", StringComparison.OrdinalIgnoreCase) >= 0 ||
             condition.IndexOf("Cube_", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -204,46 +204,34 @@ public class ConvoAIDebugOverlay : MonoBehaviour
         {
             _eventsBound = true;
 
-            _manager.onUserSpeaking.AddListener(speaking =>
-            {
-                _userSpeaking = speaking;
-                if (speaking)
-                {
-                    _agentTranscriptBuilder.Clear();
-                }
-            });
-
-            _manager.onAgentSpeaking.AddListener(speaking =>
-            {
-                _agentSpeaking = speaking;
-                if (!speaking && _agentTranscriptBuilder.Length > 0)
-                {
-                    string reply = _agentTranscriptBuilder.ToString().Trim();
-                    if (!string.IsNullOrEmpty(reply))
-                    {
-                        string shortReply = reply.Length > 110 ? reply.Substring(0, 107) + "..." : reply;
-                        AddLog($"🤖 AI: \"{shortReply}\"");
-                    }
-                }
-            });
+            _manager.onUserSpeaking.AddListener(speaking => _userSpeaking = speaking);
+            _manager.onAgentSpeaking.AddListener(speaking => _agentSpeaking = speaking);
 
             _manager.onUserTranscript.AddListener(text =>
             {
                 if (!string.IsNullOrEmpty(text))
                 {
+                    _lastAgentTranscript = "";
+                    _previewItemId = null;
                     _lastUserTranscript = text.Trim();
                     AddLog($"💬 You: \"{_lastUserTranscript}\"");
                 }
             });
 
-            _manager.onAgentTranscript.AddListener(delta =>
+            _manager.AgentItemDelta += (id, delta) =>
             {
-                if (!string.IsNullOrEmpty(delta))
-                {
-                    _agentTranscriptBuilder.Append(delta);
-                    _lastAgentTranscript = _agentTranscriptBuilder.ToString();
-                }
-            });
+                if (string.IsNullOrEmpty(id)) return;
+                if (_previewItemId != id) _lastAgentTranscript = "";
+                _previewItemId = id;
+                _lastAgentTranscript += delta;
+            };
+            _manager.AgentItemFinished += (id, text, interrupted) =>
+            {
+                if (string.IsNullOrWhiteSpace(text)) return;
+                if (_previewItemId == id) _lastAgentTranscript = text;
+                string label = interrupted ? "AI (interrupted)" : "AI";
+                AddLog($"{label}: {text}");
+            };
         }
 
         if (_micStreamer != null)
@@ -534,7 +522,7 @@ public class ConvoAIDebugOverlay : MonoBehaviour
             string aiPart = "";
             if (!string.IsNullOrEmpty(_lastAgentTranscript))
             {
-                string shortAi = _lastAgentTranscript.Length > 75 ? _lastAgentTranscript.Substring(_lastAgentTranscript.Length - 75) : _lastAgentTranscript;
+                string shortAi = _lastAgentTranscript.Length > 75 ? "…" + _lastAgentTranscript.Substring(_lastAgentTranscript.Length - 74) : _lastAgentTranscript;
                 aiPart = $"  <color=#81D4FA><b>AI:</b> \"{shortAi}\"</color>";
             }
             GUILayout.Label(userPart + aiPart, _statusStyle);

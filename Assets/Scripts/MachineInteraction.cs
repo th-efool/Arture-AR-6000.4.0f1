@@ -170,6 +170,55 @@ public class MachineInteraction : MonoBehaviour
         return focusShader;
     }
 
+    // The timer owns the next visual step. Each ordinary selection cancels it via ClearAnswer.
+    private JArray tourParts;
+    private int tourIndex;
+    private float nextTourStep;
+
+    [Preserve]
+    public JObject Machine_StartComponentTour(JObject args)
+    {
+        ClearAnswer();
+        JObject inventory = Machine_GetComponents(args);
+        if (inventory["components"] is not JArray all) return inventory;
+        var parts = new JArray();
+        foreach (JObject part in all)
+            if (part.Value<bool>("canHighlight")) parts.Add(part.DeepClone());
+        if (parts.Count == 0) return Error("No highlightable components on this machine.");
+        return ShowTourStep(parts, 0);
+    }
+
+    [Preserve]
+    public JObject Machine_StopComponentTour(JObject args)
+    {
+        bool running = tourParts != null;
+        if (running) ClearAnswer();
+        return new JObject { ["ok"] = true, ["stopped"] = running };
+    }
+
+    private JObject ShowTourStep(JArray parts, int index)
+    {
+        var part = parts[index];
+        JObject result = Machine_ShowAnswer(new JObject {
+            ["component"] = (string)part["component"],
+            ["answer"] = (string)part["description"]
+        });
+        result["step"] = index + 1;
+        result["total"] = parts.Count;
+        if (result.Value<bool>("highlighted") && result.Value<bool>("uiDisplayed"))
+        {
+            tourParts = parts;
+            tourIndex = index + 1;
+            nextTourStep = Time.unscaledTime + 6f;
+        }
+        else
+        {
+            tourParts = null;
+            Debug.LogWarning($"[MachineInteraction] Tour stopped at {part["component"]}: {result}");
+        }
+        return result;
+    }
+
     // AI reads the real component data before answering.
     [Preserve]
     public JObject Machine_GetComponents(JObject args)
@@ -652,6 +701,7 @@ public class MachineInteraction : MonoBehaviour
 
     public void ClearAnswer()
     {
+        tourParts = null;
         if (activeLabel != null)
         {
             activeLabel.gameObject.SetActive(false);
@@ -1053,7 +1103,12 @@ public class MachineInteraction : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (autoClearSeconds > 0f && selectedObject != null && Time.unscaledTime - lastAnswerShownUnscaledTime > autoClearSeconds)
+        if (tourParts != null && Time.unscaledTime >= nextTourStep)
+        {
+            if (tourIndex < tourParts.Count) ShowTourStep(tourParts, tourIndex);
+            else ClearAnswer();
+        }
+        else if (tourParts == null && autoClearSeconds > 0f && selectedObject != null && Time.unscaledTime - lastAnswerShownUnscaledTime > autoClearSeconds)
             ClearAnswer();
         UpdateLabel();
     }

@@ -2,6 +2,18 @@
   "tools": [
     {
       "type": "function",
+      "name": "Machine_StartComponentTour",
+      "description": "Show the individual components one by one in profile order, one highlight and card every six seconds. Call once for a walkthrough.",
+      "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "type": "function",
+      "name": "Machine_StopComponentTour",
+      "description": "Stop the current automatic component walkthrough.",
+      "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "type": "function",
       "name": "Machine_GetComponents",
       "description": "Read this machine's component names, descriptions, and whether each component has an assigned GameObject. Call before answering machine component questions. Use the returned names exactly.",
       "parameters": {

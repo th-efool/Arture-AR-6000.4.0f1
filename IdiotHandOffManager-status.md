@@ -1,9 +1,9 @@
 # IdiotHandOffManager Status Ledger
 
-- **Guide**: `d:\ThisPC\Documents\ArtureUnity\Arture-AR-6000.4.0f1\IdiotHandOffGuide.md` (Multi-Backend `IBulkExportProvider` Parity)
-- **Baseline Git Commit**: `f195497` (main)
+- **Guide**: `d:\ThisPC\Documents\ArtureUnity\Arture-AR-6000.4.0f1\IdiotHandOffGuide-PumpConversation.md` (Reliable pump walkthrough and conversation history)
+- **Baseline Git Commit**: `9f79fb3d9700327d8aa10d4ba08adab3e8bb5027` (main)
 - **Primary Repo**: `d:\ThisPC\Documents\ArtureUnity\Arture-AR-6000.4.0f1`
-- **Secondary Repo**: `D:\ThisPC\Downloads\Compressed\ConversationalAIOpenSource`
+- **Mirror Repo**: `D:\ThisPC\Documents\ArtureUnity\ConversationalAIOpenSource` (feat/native-rag-knowledge-base @ `4f30ceb`)
 - **Overall Status**: COMPLETE
 
 ---
@@ -12,34 +12,38 @@
 
 | Item ID | Description | Target Files | Owner / Subagent | Status | Evidence |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **G2/S0** | Precheck & Patch Helper Setup | `$env:TEMP\ph\Patch-Block.ps1` | Manager | verified | Prechecks passed and Patch-Block.ps1 prepared |
-| **G2/S1** | LocalAssetVectorProvider `IBulkExportProvider` implementation | `Packages/com.convai.openai/Runtime/RAG/Providers/LocalAssetVectorProvider.cs` | Worker-1 | verified | Cloned `float[]` vectors, in-place L2 normalisation protection |
-| **G2/S2** | SupabaseVectorProvider `IBulkExportProvider` implementation | `Packages/com.convai.openai/Runtime/RAG/Providers/SupabaseVectorProvider.cs` | Worker-2 | verified | Paginated PostgREST `SELECT`, `pgvector` string + `JArray` support |
-| **G2/S3** | PineconeVectorProvider `IBulkExportProvider` implementation | `Packages/com.convai.openai/Runtime/RAG/Providers/PineconeVectorProvider.cs` | Worker-3 | verified | Dual-schema support: `2024-07` vector API + `2026-07` document-schema fallback |
-| **G2/S4** | Direct mode condition cleanup (`QA-VOICE-001`) | `Packages/com.convai.openai/Runtime/Scripts/RealtimeConversationManager.cs` | Worker-4 | verified | Uses `IsDirectMode` in `SendSessionUpdate()` |
-| **G2/S5** | Mirror modified runtime files to secondary package repo | `D:\ThisPC\Downloads\Compressed\ConversationalAIOpenSource\com.convai.openai\Runtime\**` | Worker-5 | verified | Mirrored all 4 files |
-| **G2/V1** | Multi-backend export parser & RagLocalIndex integration test | Standalone .NET 8 test harness | Manager | verified | 5/5 PASS (`ALL MULTI-BACKEND CHECKS PASSED`) |
-| **G2/V2** | Build `com.convai.openai.csproj` | `com.convai.openai.csproj` | Manager | verified | Build succeeded (`0 Error(s)`) |
-| **G2/V3** | Live Pinecone document-schema export check | Live Pinecone REST API | Manager | verified | `PINECONE EXPORT OK` (fetched `chunk_pinecone_1`) |
-| **G2/V4** | 12-file dual-repo parity check | Both repositories | Manager | verified | 12/12 `PARITY OK` byte-for-byte matching |
+| **G1/S1** | Verify paths, commits, and initial SHA256 hashes | Baseline repos & hashes | Manager | verified | Preimages matched A6CF224E... & EE82A38A... |
+| **G1/S2** | Apply unified diff (Walkthrough tour + conversation history + RAG status) | 6 files across Assets & Packages | Manager | verified | UTF-8 patch applied cleanly, git apply --reverse --check exit code 0 |
+| **G1/S3** | Mirror changed package files to ConversationalAIOpenSource | `com.convai.openai/` mirror | Manager | verified | Hashes matched: D0A30621... (manager) & 29981BFE... (bridge) |
+| **G1/S4** | Record architectural invariants in Memory/ | `Memory/01`, `Memory/02`, `Memory/03` | Manager | verified | Appended conversation and walkthrough invariants |
+| **G1/V1** | Package compile & SHA256 mirror parity check | `com.convai.openai.csproj` | Manager | verified | `dotnet build com.convai.openai.csproj` exit code 0 (0 Error(s)) |
+| **G1/V2** | Inspection of assistant transcript delta & item finished logic | `RealtimeConversationManager.cs`, `ConvoAIDebugOverlay.cs` | Manager | verified | Item-keyed previews, role==assistant content filtering |
+| **G1/V3** | Inspection of voice turn & barge-in handling | `RealtimeConversationManager.cs` | Manager | verified | Input deltas suppressed from onUserTranscript; incomplete items marked interrupted |
+| **G1/V4** | Verification of visual component tour | `MachineInteraction.cs`, `MachineTools.json` | Manager | verified | Machine_StartComponentTour / StopComponentTour registered with 6s unscaled step |
+| **G1/V5** | Verification of tour cancellation on clear/interruption | `MachineInteraction.cs` | Manager | verified | ClearAnswer clears tourParts; failure to highlight halts tour |
+| **G1/V6** | Verification of provenance prompt & source/absence rules | `ConvoAIMicPermissionStarter.cs` | Manager | verified | Rules 9 and 10 added to enhanced instructions |
+| **G1/V7** | Verification of outage vs. genuine miss RAG statuses | `RagConversationBridge.cs` | Manager | verified | SearchCoreAsync distinguishes 'retrieved', 'no_sources', and 'unavailable' |
 
 ---
 
-## Final Verification Results
-1. **`V1` (Multi-Backend Test Harness)**:
-   - PASS: LocalAsset ScriptableObject original array is not mutated by RagLocalIndex in-place normalisation
-   - PASS: Cloned vector in RagLocalIndex is L2-normalised (magnitude 1.0)
-   - PASS: Multi-backend index holds all 4 entries (Local + Supabase + Pinecone)
-   - PASS: Lexical BM25 search finds Pinecone chunk in `<1 ms`
-   - PASS: Semantic search finds Supabase `pgvector` string-formatted chunk (`score > 0.99`)
-   - Outcome: `ALL MULTI-BACKEND CHECKS PASSED`
-2. **`V2` (C# Compilation)**:
-   - Command: `dotnet build "com.convai.openai.csproj" --no-restore -v minimal`
-   - Outcome: `0 Error(s)`
-3. **`V3` (Live Pinecone Verification)**:
-   - Endpoint: `https://rag-provider-tests-ieyzlld.svc.aped-4627-b74a.pinecone.io/namespaces/rag-provider-tests/documents/list` + `/documents/fetch`
-   - Document ID: `chunk_pinecone_1`
-   - Outcome: `PINECONE EXPORT OK`
-4. **`V4` (Dual-Repository Parity)**:
-   - All 12 runtime files match byte-for-byte across `Arture-AR-6000.4.0f1` and `ConversationalAIOpenSource`.
-   - Outcome: `PARITY OK` (12 files)
+## Acceptance Check Results
+
+1. **V1 (Compilation & Mirror Parity)**:
+   - `dotnet build .\com.convai.openai.csproj --no-restore -v minimal`: 0 Error(s), 4 Warning(s), Time Elapsed 00:00:05.
+   - Dual-repo SHA256 hashes verified:
+     - `Runtime/Scripts/RealtimeConversationManager.cs`: `D0A306218E5DBE022161F6D323101D96AC089D68330D2BDC2999853EFBC76A4D` (Identical)
+     - `Runtime/RAG/RuntimeBridge/RagConversationBridge.cs`: `29981BFE6B3AEBAF292D37616576D8CA57EDAD5034F8FACD317F8152581F72A5` (Identical)
+2. **V2 (History & Preview Segregation)**:
+   - `AgentItemDelta` and `AgentItemFinished` events added to `RealtimeConversationManager`.
+   - `ConvoAIDebugOverlay` now keys preview by item ID (`_previewItemId`), preventing previous answers from prefixing later responses.
+   - Function-call-only items produce zero AI history rows because `AgentItemFinished` only fires when `item["role"] == "assistant"` and `content` contains text/transcript parts.
+3. **V3 (Voice & Barge-In)**:
+   - Per-delta user transcripts (`HandleInputTranscriptDelta`) are suppressed; only completed transcripts fire `onUserTranscript`.
+   - Incomplete assistant items on interruption receive the `(interrupted)` label in history.
+4. **V4 & V5 (Visual Component Tour & Cancellation)**:
+   - `Machine_StartComponentTour` and `Machine_StopComponentTour` added to `Assets/MachineTools.json` and `Assets/Scripts/MachineInteraction.cs`.
+   - Tour steps through highlightable profile components with a 6-second unscaled timer (`nextTourStep = Time.unscaledTime + 6f`).
+   - Any ordinary selection or call to `ClearAnswer()` sets `tourParts = null`, stopping the tour immediately.
+5. **V6 & V7 (Knowledge Provenance & Status Differentiation)**:
+   - Prompt rules 9 and 10 enforce tour tool delegation, citing only returned document name and section, stating when an answer is unsupported, and never hallucinating Unity manual pages.
+   - `RagConversationBridge.SearchCoreAsync` now returns `status: "no_sources"` on zero results, and throws to return `status: "unavailable"` with `context: "The knowledge lookup failed. Please retry."` on network/embedding/provider error. Existing callers to `SearchAsync` retain list-returning semantics.

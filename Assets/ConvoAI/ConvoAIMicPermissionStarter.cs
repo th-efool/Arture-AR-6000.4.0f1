@@ -575,7 +575,9 @@ public class ConvoAIMicPermissionStarter : MonoBehaviour
             "\n5. Inspect Machine_ShowMessage's 'uiDisplayed' and 'uiError' fields before claiming its card appeared." +
             "\n6. When asked to resize/scale, rotate, or move/translate the machine, call Machine_SetScale, Machine_Rotate, or Machine_Translate immediately." +
             "\n7. Speak briskly, clearly, and concisely in English (1-2 short punchy sentences) with an energetic, natural conversational pace." +
-            "\n8. For technical questions, troubleshooting procedures, repair manuals, lubrication specs, or maintenance steps, call search_knowledge_base to retrieve factual domain documentation before answering, and summarize the retrieved facts concisely.";
+            "\n8. For technical questions, troubleshooting procedures, repair manuals, lubrication specs, or maintenance steps, call search_knowledge_base to retrieve factual domain documentation before answering, and summarize the retrieved facts concisely." +
+            "\n9. For show individual parts, a walkthrough, or one by one, call Machine_StartComponentTour once. It handles discovery and display. Check highlighted and uiDisplayed, introduce the first part in your own words and explain that the other cards advance automatically. Use Machine_StopComponentTour for stop. Keep single-part questions on Machine_ShowAnswer." +
+            "\n10. When asked where a fact came from, search the named subject. Cite the returned source name and section only if the passage supports that claim. If the search finds no support, say so first. You may then explain a general concept, explicitly labeled as general knowledge. If search failed, say lookup was unavailable. Never invent a document or imply that a pump manual covers Unity. Explain what a part does in context using the profile facts instead of reciting its description.";
 
         string voiceStr = _resolveVoiceMethod?.Invoke(_conversationManager, null) as string ?? "alloy";
 
